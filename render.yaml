@@ -1,0 +1,41 @@
+services:
+  # Logo Replacement SaaS service
+  - type: web
+    name: logo-replacement-saas
+    env: python
+    plan: starter
+    buildCommand: ./build.sh
+    startCommand: gunicorn logo_saas.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 120 --max-requests 1 --max-requests-jitter 0
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: logo-replacement-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: USE_S3
+        value: "True"
+      - key: ALLOWED_HOSTS
+        value: "logo-replacement-saas.onrender.com,replogo.com"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://logo-replacement-saas.onrender.com,https://replogo.com"
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: MALLOC_TRIM_THRESHOLD_
+        value: "65536"
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        value: "eu-central-1"
+
+databases:
+  - name: logo-replacement-db
+    plan: standard

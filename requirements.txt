@@ -1,0 +1,24 @@
+Django>=5.0.0
+djangorestframework>=3.14.0
+django-cors-headers>=4.0.0
+Pillow>=10.0.0
+gunicorn>=21.0.0
+dj-database-url>=2.1.0
+whitenoise>=6.5.0
+psycopg2-binary>=2.9.9
+django-storages>=1.14.0
+boto3>=1.28.0
+python-dotenv>=1.0.0
+PyMuPDF==1.23.5  # for PDF processing
+python-pptx==0.6.21  # for PowerPoint processing
+python-docx>=0.8.11  # for Word processing
+ftfy>=6.1.1  # for CLIP text preprocessing
+regex>=2022.10.31  # for CLIP text preprocessing
+tqdm>=4.65.0  # for progress bars
+torch>=2.0.0
+torchvision>=0.15.0
+clip @ git+https://github.com/openai/CLIP.git
+opencv-python>=4.7.0  # for image processing
+numpy>=1.23.0  # required for various operations
+psutil>=5.9.0
+imagehash>=4.3.1  # for image comparison and deduplication 

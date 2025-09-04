@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="200" viewBox="0 0 800 200" version="1.1" xmlns="http://www.w3.org/2000/svg">
+    <g>
+        <!-- Text "REPLOGO" -->
+        <text x="20" y="150" font-family="Arial" font-size="180" font-weight="bold" fill="#5FBEA0">REPLOGO</text>
+        
+        <!-- Cursor icon -->
+        <g transform="translate(600, 40)" fill="#1A237E">
+            <path d="M120,0 C115,0 110,2 106,6 L40,72 C32,80 32,92 40,100 C44,104 49,106 54,106 C59,106 64,104 68,100 L134,34 C142,26 142,14 134,6 C130,2 125,0 120,0z"/>
+            <circle cx="134" cy="6" r="12"/>
+        </g>
+    </g>
+</svg>

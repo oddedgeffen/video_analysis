@@ -1,0 +1,1 @@
+from .extractors import extract_images_from_document 
