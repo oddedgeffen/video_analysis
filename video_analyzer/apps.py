@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class DocumentProcessorConfig(AppConfig):
+class VideoAnalyzerConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "document_processor"
+    name = "video_analyzer"

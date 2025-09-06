@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, CssBaseline, Box, Paper } from '@mui/material';
+import { ThemeProvider, CssBaseline } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
 import RecordVideo from './components/RecordVideo';
 import AdminRoute from './components/AdminRoute';
@@ -29,21 +29,9 @@ function App() {
       <Router basename={basename}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/upload" element={
-            <Box sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
-              <Paper sx={{ p: 3 }}>
-                <RecordVideo />
-              </Paper>
-            </Box>
-          } />
+          <Route path="/upload" element={<RecordVideo />} />
           <Route path="/admin" element={<AdminRoute />} />
-          <Route path="/chat/:videoId" element={
-            <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
-              <Paper sx={{ p: 3 }}>
-                <ChatPage />
-              </Paper>
-            </Box>
-          } />
+          <Route path="/chat/:videoId" element={<ChatPage />} />
         </Routes>
       </Router>
     </ThemeProvider>

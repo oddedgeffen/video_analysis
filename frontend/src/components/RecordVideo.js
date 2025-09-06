@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -6,7 +6,6 @@ import {
   Paper,
   CircularProgress,
   Alert,
-  IconButton,
   Select,
   MenuItem,
   FormControl,
@@ -27,40 +26,169 @@ const RecordVideo = () => {
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
-  
+  const audioAnalyserRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const currentStreamRef = useRef(null);
+  const initializingRef = useRef(false);
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordedVideo, setRecordedVideo] = useState(null);
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
-      const [stream, setStream] = useState(null);
-    const [processingStatus, setProcessingStatus] = useState(null);
-    const [devices, setDevices] = useState({ video: [], audio: [] });
-      const [selectedCamera, setSelectedCamera] = useState('');
+  const [processingStatus, setProcessingStatus] = useState(null);
+  const [devices, setDevices] = useState({ video: [], audio: [] });
+  const [selectedCamera, setSelectedCamera] = useState('');
   const [selectedMic, setSelectedMic] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
-  const audioAnalyserRef = useRef(null);
-  const animationFrameRef = useRef(null);
+  const [cameraInitialized, setCameraInitialized] = useState(false);
 
-  // Request permissions and get available devices
-  const getDevices = async () => {
+  // Cleanup function that doesn't depend on state
+  const cleanup = useCallback(() => {
+    if (currentStreamRef.current) {
+      currentStreamRef.current.getTracks().forEach(track => track.stop());
+      currentStreamRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (audioAnalyserRef.current) {
+      try {
+        audioAnalyserRef.current.disconnect();
+      } catch (e) {
+        // Ignore disconnect errors
+      }
+      audioAnalyserRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      try {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      } catch (e) {
+        // Ignore close errors
+      }
+    }
+  }, []);
+
+  // Audio analysis function
+  const startAudioAnalysis = useCallback((stream) => {
     try {
-      // First request permissions by trying to access the devices
-      const initialStream = await navigator.mediaDevices.getUserMedia({ 
-        video: true, 
-        audio: true 
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      }
+
+      const audioContext = audioContextRef.current;
+
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+
+      const analyser = audioContext.createAnalyser();
+      const microphone = audioContext.createMediaStreamSource(stream);
+      microphone.connect(analyser);
+      analyser.fftSize = 256;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const updateAudioLevel = () => {
+        if (!audioAnalyserRef.current) return;
+
+        analyser.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((acc, val) => acc + val, 0) / bufferLength;
+        const normalizedLevel = (average / 256) * 100;
+        setAudioLevel(normalizedLevel);
+
+        animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+      };
+
+      audioAnalyserRef.current = analyser;
+      updateAudioLevel();
+    } catch (err) {
+      console.error('Audio analysis error:', err);
+    }
+  }, []);
+
+  // Initialize camera function - stable version
+  const initializeCamera = useCallback(async (cameraId, micId) => {
+    if (!cameraId || initializingRef.current) return;
+
+    initializingRef.current = true;
+
+    try {
+      // Clean up previous stream
+      cleanup();
+
+      const constraints = {
+        video: {
+          deviceId: { exact: cameraId }
+        },
+        ...(micId && {
+          audio: {
+            deviceId: { exact: micId }
+          }
+        })
+      };
+
+      console.log('Initializing with constraints:', constraints);
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      // Store stream reference
+      currentStreamRef.current = mediaStream;
+
+      // Set the stream to the video element
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+
+        // Simple play without complex event handling
+        try {
+          await videoRef.current.play();
+        } catch (playError) {
+          console.warn('Video play error:', playError);
+        }
+      }
+
+      setCameraInitialized(true);
+
+      // Initialize audio analysis if we have audio track
+      if (micId && mediaStream.getAudioTracks().length > 0) {
+        startAudioAnalysis(mediaStream);
+      }
+
+      setError(null);
+    } catch (err) {
+      setError("Failed to access camera and microphone. Please ensure you have granted the necessary permissions.");
+      console.error("Camera access error:", err);
+      setCameraInitialized(false);
+    } finally {
+      initializingRef.current = false;
+    }
+  }, [cleanup, startAudioAnalysis]);
+
+  // Get devices function
+  const getDevices = useCallback(async () => {
+    try {
+      // First request permissions
+      const initialStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
       });
-      
-      // Once we have permissions, enumerate devices
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-      const audioDevices = devices.filter(device => device.kind === 'audioinput');
-      
+
+      // Stop it immediately
+      initialStream.getTracks().forEach(track => track.stop());
+
+      // Now enumerate devices
+      const deviceList = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = deviceList.filter(device => device.kind === 'videoinput');
+      const audioDevices = deviceList.filter(device => device.kind === 'audioinput');
+
       setDevices({
         video: videoDevices,
         audio: audioDevices
       });
 
-      // Set default devices if none are selected
+      // Set default devices if none are selected and devices are available
       if (!selectedCamera && videoDevices.length > 0) {
         setSelectedCamera(videoDevices[0].deviceId);
       }
@@ -68,110 +196,46 @@ const RecordVideo = () => {
         setSelectedMic(audioDevices[0].deviceId);
       }
 
-      // Stop the initial stream since we'll create a new one with selected devices
-      initialStream.getTracks().forEach(track => track.stop());
     } catch (err) {
       console.error('Error getting devices:', err);
       if (err.name === 'NotAllowedError') {
-        setError('Please allow access to your camera and microphone to use this feature. Click the camera icon in your browser\'s address bar to grant permission.');
+        setError('Please allow access to your camera and microphone to use this feature.');
       } else {
         setError('Failed to access cameras and microphones. Please make sure your devices are connected and try again.');
       }
     }
-  };
+  }, [selectedCamera, selectedMic]);
 
-  // Initialize devices when component mounts
+  // Initialize devices on mount
   useEffect(() => {
     getDevices();
+
     return () => {
-      // Cleanup: stop all tracks and audio analysis when component unmounts
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      if (audioAnalyserRef.current) {
-        audioAnalyserRef.current.disconnect();
-      }
+      cleanup();
     };
-  }, []);
+  }, [getDevices, cleanup]);
 
   // Initialize camera when devices are selected
   useEffect(() => {
-    if (selectedCamera && selectedMic) {
-      initializeCamera();
+    if (selectedCamera && !isRecording && !recordedVideo) {
+      // Debounce camera initialization
+      const timeoutId = setTimeout(() => {
+        initializeCamera(selectedCamera, selectedMic);
+      }, 500);
+
+      return () => clearTimeout(timeoutId);
     }
-  }, [selectedCamera, selectedMic]);
-
-  // Function to analyze audio levels
-  const analyzeAudio = (audioContext, stream) => {
-    const analyser = audioContext.createAnalyser();
-    const microphone = audioContext.createMediaStreamSource(stream);
-    microphone.connect(analyser);
-    analyser.fftSize = 256;
-    
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    
-    const updateAudioLevel = () => {
-      analyser.getByteFrequencyData(dataArray);
-      // Calculate average volume level
-      const average = dataArray.reduce((acc, val) => acc + val, 0) / bufferLength;
-      // Normalize to 0-100 range
-      const normalizedLevel = (average / 256) * 100;
-      setAudioLevel(normalizedLevel);
-      
-      animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
-    };
-    
-    audioAnalyserRef.current = analyser;
-    updateAudioLevel();
-  };
-
-  const initializeCamera = async () => {
-    try {
-      // Stop existing stream and audio analysis
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          deviceId: selectedCamera ? { exact: selectedCamera } : undefined
-        },
-        audio: {
-          deviceId: selectedMic ? { exact: selectedMic } : undefined
-        }
-      });
-      setStream(mediaStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-      
-      // Initialize audio analysis
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      analyzeAudio(audioContext, mediaStream);
-      
-      setError(null);
-    } catch (err) {
-      setError("Failed to access camera and microphone. Please ensure you have granted the necessary permissions.");
-      console.error("Camera access error:", err);
-    }
-  };
+  }, [selectedCamera, selectedMic, isRecording, recordedVideo, initializeCamera]);
 
   const startRecording = () => {
-    if (!stream) {
+    if (!currentStreamRef.current) {
       setError("Camera not initialized");
       return;
     }
 
     try {
       chunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(currentStreamRef.current);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -180,35 +244,20 @@ const RecordVideo = () => {
         }
       };
 
-      mediaRecorder.onstop = async () => {
-        // Stop all tracks (camera and microphone)
-        stream.getTracks().forEach(track => track.stop());
-        
-        // Stop audio analysis
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-        }
-        if (audioAnalyserRef.current) {
-          audioAnalyserRef.current.disconnect();
-        }
-        
-        // Clear the video preview source
+      mediaRecorder.onstop = () => {
+        // Stop the stream and clean up
+        cleanup();
+        setCameraInitialized(false);
+
+        // Clear the video preview
         if (videoRef.current) {
           videoRef.current.srcObject = null;
         }
 
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
         const videoUrl = URL.createObjectURL(blob);
-        
-        // Set recorded video for preview
+
         setRecordedVideo({ blob, url: videoUrl });
-        setStream(null); // Clear the stream reference
-        
-        // Automatically download the video
-        downloadVideo(blob);
-        
-        // Automatically upload and navigate to chat
-        await uploadVideoAndNavigate(blob);
       };
 
       mediaRecorder.start();
@@ -247,21 +296,47 @@ const RecordVideo = () => {
   const uploadVideoAndNavigate = async (blob) => {
     setUploading(true);
     setProcessingStatus('uploading');
-    
+
     try {
+      console.log('Debug: Starting video upload, blob size:', blob.size);
       const formData = new FormData();
-      formData.append('video', blob, `video-${Date.now()}.webm`);
-      
-      const response = await axios.post(`${API_BASE_URL}/upload-video/`, formData, {
+      const filename = `video-${Date.now()}.webm`;
+      formData.append('video', blob, filename);
+      console.log('Debug: Created FormData with filename:', filename);
+
+      // Add debugger statement for frontend debugging
+      debugger;
+
+      // Upload video and start processing
+      console.log('Debug: Sending POST request to:', `${API_BASE_URL}/process-video/`);
+      const response = await axios.post(`${API_BASE_URL}/process-video/`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        timeout: 60000,
       });
-      
+
       if (response.data.videoId) {
         setProcessingStatus('processing');
-        // Navigate to chat page with the video ID
-        navigate(`/chat/${response.data.videoId}`);
+
+        const pollStatus = async () => {
+          try {
+            const statusResponse = await axios.get(`${API_BASE_URL}/video-status/${response.data.videoId}/`);
+
+            if (statusResponse.data.status === 'completed') {
+              navigate(`/analysis/${response.data.videoId}`);
+            } else if (statusResponse.data.status === 'failed') {
+              throw new Error(statusResponse.data.error || 'Processing failed');
+            } else {
+              setTimeout(pollStatus, 2000);
+            }
+          } catch (err) {
+            setError('Failed to check processing status: ' + (err.message || 'Unknown error'));
+            setProcessingStatus('error');
+          }
+        };
+
+        pollStatus();
       } else {
         throw new Error('No video ID received from server');
       }
@@ -269,13 +344,10 @@ const RecordVideo = () => {
       setError(err.response?.data?.error || 'Failed to upload video');
       setProcessingStatus('error');
       console.error('Upload error:', err);
-    } finally {
-      setUploading(false);
     }
   };
 
-  const retakeVideo = async () => {
-    // Clean up the object URL
+  const retakeVideo = () => {
     if (recordedVideo?.url) {
       URL.revokeObjectURL(recordedVideo.url);
     }
@@ -283,22 +355,43 @@ const RecordVideo = () => {
     setRecordedVideo(null);
     setError(null);
     setProcessingStatus(null);
+    setCameraInitialized(false);
 
-    // Reinitialize camera
-    try {
-      await initializeCamera();
-    } catch (err) {
-      setError("Failed to restart camera. Please refresh the page and try again.");
-      console.error("Camera restart error:", err);
-    }
+    // The useEffect will handle re-initializing the camera
   };
 
-  const handleManualUpload = async () => {
+  const handleAnalyzeVideo = async () => {
     if (!recordedVideo) {
       setError("No video recorded");
       return;
     }
-    await uploadVideoAndNavigate(recordedVideo.blob);
+
+    try {
+      downloadVideo(recordedVideo.blob);
+      await uploadVideoAndNavigate(recordedVideo.blob);
+    } catch (err) {
+      setError("Failed to process video. Please try again.");
+      console.error("Video processing error:", err);
+    }
+  };
+
+  // Device change handlers
+  const handleCameraChange = (e) => {
+    const newCameraId = e.target.value;
+    if (newCameraId !== selectedCamera) {
+      setSelectedCamera(newCameraId);
+      setCameraInitialized(false);
+    }
+  };
+
+  const handleMicChange = (e) => {
+    const newMicId = e.target.value;
+    if (newMicId !== selectedMic) {
+      setSelectedMic(newMicId);
+      if (cameraInitialized) {
+        setCameraInitialized(false);
+      }
+    }
   };
 
   return (
@@ -324,9 +417,9 @@ const RecordVideo = () => {
       >
         {/* Device Selection */}
         <Box sx={{ width: '100%' }}>
-          <Stack 
-            direction="row" 
-            spacing={2} 
+          <Stack
+            direction="row"
+            spacing={2}
             alignItems="center"
             sx={{ mb: 2 }}
           >
@@ -343,9 +436,9 @@ const RecordVideo = () => {
             </Button>
           </Stack>
 
-          <Stack 
-            direction={{ xs: 'column', sm: 'row' }} 
-            spacing={2} 
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
             sx={{ width: '100%' }}
           >
             <FormControl fullWidth disabled={isRecording}>
@@ -353,7 +446,7 @@ const RecordVideo = () => {
               <Select
                 value={selectedCamera}
                 label="Camera"
-                onChange={(e) => setSelectedCamera(e.target.value)}
+                onChange={handleCameraChange}
               >
                 {devices.video.length === 0 ? (
                   <MenuItem disabled value="">
@@ -374,7 +467,7 @@ const RecordVideo = () => {
               <Select
                 value={selectedMic}
                 label="Microphone"
-                onChange={(e) => setSelectedMic(e.target.value)}
+                onChange={handleMicChange}
               >
                 {devices.audio.length === 0 ? (
                   <MenuItem disabled value="">
@@ -392,13 +485,13 @@ const RecordVideo = () => {
           </Stack>
 
           {/* Audio Level Meter */}
-          {selectedMic && !isRecording && (
+          {selectedMic && cameraInitialized && !isRecording && (
             <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
               <Typography variant="subtitle2" gutterBottom>
                 Microphone Test
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box sx={{ 
+                <Box sx={{
                   flex: 1,
                   height: 20,
                   bgcolor: 'grey.300',
@@ -425,8 +518,8 @@ const RecordVideo = () => {
           )}
 
           {(devices.video.length === 0 || devices.audio.length === 0) && (
-            <Alert 
-              severity="warning" 
+            <Alert
+              severity="warning"
               sx={{ mt: 2 }}
               action={
                 <Button
@@ -456,7 +549,8 @@ const RecordVideo = () => {
             aspectRatio: '16/9',
             backgroundColor: '#000',
             borderRadius: 1,
-            overflow: 'hidden'
+            overflow: 'hidden',
+            position: 'relative'
           }}
         >
           {recordedVideo ? (
@@ -465,14 +559,62 @@ const RecordVideo = () => {
               controls
               style={{ width: '100%', height: '100%' }}
             />
+          ) : selectedCamera ? (
+            <>
+              <video
+                ref={videoRef}
+                autoPlay
+                muted
+                playsInline
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: cameraInitialized ? 'block' : 'none'
+                }}
+              />
+              {!cameraInitialized && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexDirection: 'column',
+                    gap: 2,
+                    color: 'white',
+                    backgroundColor: 'rgba(0,0,0,0.8)'
+                  }}
+                >
+                  <CircularProgress color="primary" size={40} />
+                  <Typography>
+                    Initializing camera...
+                  </Typography>
+                </Box>
+              )}
+            </>
           ) : (
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              style={{ width: '100%', height: '100%' }}
-            />
+            <Box
+              sx={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'column',
+                gap: 2,
+                color: 'white'
+              }}
+            >
+              <VideocamIcon sx={{ fontSize: 48 }} />
+              <Typography>
+                Select a camera to start preview
+              </Typography>
+            </Box>
           )}
         </Box>
 
@@ -502,7 +644,7 @@ const RecordVideo = () => {
               color={isRecording ? "error" : "primary"}
               startIcon={isRecording ? <StopIcon /> : <VideocamIcon />}
               onClick={isRecording ? stopRecording : startRecording}
-              disabled={!stream || uploading}
+              disabled={!cameraInitialized || uploading}
               size="large"
             >
               {isRecording ? "Stop Recording" : "Start Recording"}
@@ -520,22 +662,33 @@ const RecordVideo = () => {
                 <Button
                   variant="contained"
                   color="primary"
-                  onClick={handleManualUpload}
+                  onClick={handleAnalyzeVideo}
                 >
-                  Upload & Analyze
+                  Analyze My Video
                 </Button>
               )}
             </>
           )}
         </Box>
 
-        {/* Upload Progress */}
-        {uploading && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <CircularProgress size={24} />
-            <Typography variant="body2">
-              {processingStatus === 'uploading' ? 'Uploading video...' : 'Processing...'}
-            </Typography>
+        {/* Upload & Processing Progress */}
+        {(uploading || processingStatus === 'processing') && (
+          <Box sx={{ mt: 2, width: '100%' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+              <CircularProgress size={24} />
+              <Typography variant="body2">
+                {processingStatus === 'uploading' && 'Uploading video...'}
+                {processingStatus === 'processing' && 'Analyzing video...'}
+              </Typography>
+            </Box>
+            <Alert severity="info">
+              {processingStatus === 'uploading' &&
+                'Uploading your video to the server...'
+              }
+              {processingStatus === 'processing' &&
+                'Your video is being analyzed. This may take a few minutes depending on the video length. Please don\'t close this window.'
+              }
+            </Alert>
           </Box>
         )}
 
@@ -550,25 +703,6 @@ const RecordVideo = () => {
           </Alert>
         )}
 
-        {/* Status Messages */}
-        {processingStatus === 'uploading' && (
-          <Alert
-            severity="info"
-            sx={{ width: '100%' }}
-          >
-            Uploading your video...
-          </Alert>
-        )}
-
-        {processingStatus === 'processing' && (
-          <Alert
-            severity="info"
-            sx={{ width: '100%' }}
-          >
-            Video uploaded successfully! Redirecting to analysis...
-          </Alert>
-        )}
-
         {/* Instructions */}
         <Paper
           sx={{
@@ -580,13 +714,17 @@ const RecordVideo = () => {
           <Typography variant="body2" color="textSecondary">
             <strong>Instructions:</strong>
             <br />
-            1. Click "Start Recording" to begin
+            1. Select your camera and microphone from the dropdowns above
             <br />
-            2. Speak clearly and look at the camera
+            2. Wait for the camera preview to appear
             <br />
-            3. Click "Stop Recording" when finished
+            3. Click "Start Recording" to begin
             <br />
-            4. Your video will automatically download and be processed for analysis
+            4. Speak clearly and look at the camera
+            <br />
+            5. Click "Stop Recording" when finished
+            <br />
+            6. Your video will automatically download and be processed for analysis
           </Typography>
         </Paper>
       </Paper>

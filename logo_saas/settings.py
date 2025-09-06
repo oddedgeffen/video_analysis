@@ -12,7 +12,6 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
-import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,16 +26,10 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-t&xc#bkc@+isv#0438rz$
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 
-# Debug logging for ALLOWED_HOSTS
-print("DEBUG: ALLOWED_HOSTS from env:", os.environ.get("ALLOWED_HOSTS"))
-print("DEBUG: ALLOWED_HOSTS default:", "localhost,127.0.0.1,logo-replacement-saas.onrender.com,replogo.com")
-
 ALLOWED_HOSTS = os.environ.get(
     "ALLOWED_HOSTS",
-    "localhost,127.0.0.1,logo-replacement-saas.onrender.com,replogo.com"
+    "localhost,127.0.0.1"
 ).split(",")
-
-print("DEBUG: Final ALLOWED_HOSTS:", ALLOWED_HOSTS)
 
 USE_S3 = os.environ.get("USE_S3", "False") == "True"
 
@@ -52,7 +45,7 @@ INSTALLED_APPS = [
     "storages",
     "rest_framework",
     "corsheaders",
-    "document_processor",
+    "video_analyzer",
 ]
 
 MIDDLEWARE = [
@@ -90,22 +83,12 @@ WSGI_APPLICATION = "logo_saas.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-if os.getenv("USE_REMOTE_DB") == "True":
-    DATABASES = {
-        "default": dj_database_url.parse(
-            os.environ.get(
-            "DATABASE_URL",
-            "postgresql://logo_db_user:VQqbpNoRhlaMqLz9JwLB5VOIdktdrsjt@dpg-d0cbf3ruibrs73e0uos0-a.frankfurt-postgres.render.com/logo_db"
-        )
-    )
-}
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
+}
 
 
 # Password validation
@@ -161,15 +144,8 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only in development
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = os.environ.get(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,https://logo-replacement-saas.onrender.com,https://replogo.com,https://www.replogo.com"
+    "http://localhost:3000"
 ).split(",")
-
-# CSRF settings
-CSRF_TRUSTED_ORIGINS = [
-    'https://replogo.com',
-    'https://www.replogo.com',
-    'https://logo-replacement-saas.onrender.com'
-]
 
 # Add CORS allowed methods
 CORS_ALLOWED_METHODS = [
@@ -185,75 +161,17 @@ CORS_ALLOWED_METHODS = [
 MEDIA_URL = '/media/'  # Default media URL for local storage
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-# -------------------------------------------------
-# Debugging S3 activation  (REMOVE after test)
-import os
-print("DEBUG env:", os.getenv("DEBUG"))
-print("USE_S3 env:", os.getenv("USE_S3"))
-print("DEBUG bool:", DEBUG)
-# -------------------------------------------------
+# Storage backends configuration
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
-# Use AWS S3 for static files in production
-if USE_S3:
-    print("*** S3 SETTINGS ACTIVE inside 111 ***")
-
-    AWS_ACCESS_KEY_ID = os.environ["AWS_ACCESS_KEY_ID"]
-    AWS_SECRET_ACCESS_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
-    AWS_STORAGE_BUCKET_NAME = os.environ["AWS_STORAGE_BUCKET_NAME"]
-    AWS_S3_REGION_NAME = os.environ["AWS_S3_REGION_NAME"]
-    AWS_DEFAULT_ACL = None  # Allow public-read or controlled via bucket policy
-    AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com"
-    AWS_S3_OBJECT_PARAMETERS = {
-        "CacheControl": "max-age=86400",
-    }
-
-    AWS_QUERYSTRING_AUTH = True       # return *presigned* URLs
-    AWS_QUERYSTRING_EXPIRE = 60         # seconds; keep equal to your view
-
-    # Storage configuration for static files (CSS, JS, images)
-    AWS_LOCATION = "static"
-    STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/static/"
-    
-    # Storage configuration for media files (user uploads)
-    AWS_MEDIA_LOCATION = "media"
-    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/media/"
-
-    # Storage backends configuration
-    STORAGES = {
-        "default": {
-            "BACKEND": "logo_saas.storage.MediaStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "logo_saas.storage.StaticStorage",
-        },
-    }
-else:
-    # Local storage settings
-    STORAGES = {
-        "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-        },
-    }
-
-# Security settings
-if not DEBUG:
-    print("*** SECURITY SETTINGS ACTIVE ***")
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_HSTS_SECONDS = 31536000  # 1 year
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    
-    # Memory management settings
-    DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
-    FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
-    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-
-# REST Framework configuration to use JSON responses only (disable Browsable API)
+# REST Framework configuration
 REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
@@ -287,7 +205,7 @@ LOGGING = {
             'level': 'ERROR',
             'propagate': True,
         },
-        'document_processor': {
+        'video_analyzer': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': True,

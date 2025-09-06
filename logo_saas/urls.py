@@ -45,5 +45,5 @@ urlpatterns = [
     path('health/', lambda request: HttpResponse('OK'), name='health'),  # Health check at /health/
     path('test/', ReactAppView.as_view(template_name='test.html'), name='test'),
     path('admin/', admin.site.urls),
-    path('api/', include('document_processor.urls')),
+    path('api/', include('video_analyzer.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
