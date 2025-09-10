@@ -1,24 +1,18 @@
-Django>=5.0.0
-djangorestframework>=3.14.0
-django-cors-headers>=4.0.0
-Pillow>=10.0.0
-gunicorn>=21.0.0
-dj-database-url>=2.1.0
-whitenoise>=6.5.0
-psycopg2-binary>=2.9.9
-django-storages>=1.14.0
-boto3>=1.28.0
-python-dotenv>=1.0.0
-PyMuPDF==1.23.5  # for PDF processing
-python-pptx==0.6.21  # for PowerPoint processing
-python-docx>=0.8.11  # for Word processing
-ftfy>=6.1.1  # for CLIP text preprocessing
-regex>=2022.10.31  # for CLIP text preprocessing
-tqdm>=4.65.0  # for progress bars
-torch>=2.0.0
-torchvision>=0.15.0
-clip @ git+https://github.com/openai/CLIP.git
-opencv-python>=4.7.0  # for image processing
-numpy>=1.23.0  # required for various operations
-psutil>=5.9.0
-imagehash>=4.3.1  # for image comparison and deduplication 
+Django>=5.0.0  # Core framework
+djangorestframework>=3.14.0  # REST API
+django-cors-headers>=4.0.0  # Frontend communication
+gunicorn>=21.0.0  # Production server
+whitenoise>=6.5.0  # Static file serving
+django-storages>=1.14.0  # File storage abstraction
+boto3>=1.28.0  # AWS S3 storage
+python-dotenv>=1.0.0  # Environment variables
+opencv-python>=4.7.0  # Video processing (cv2)
+numpy>=1.23.0  # Required by OpenCV and general processing
+ffmpeg-python>=0.2.0  # FFmpeg Python interface
+requests>=2.31.0  # For downloading FFmpeg
+tqdm>=4.65.0  # Progress bars
+faster-whisper==1.2.0  # Speech to text
+--index-url https://download.pytorch.org/whl/cu126
+torch==2.8.0+cu126
+torchvision==0.23.0+cu126
+mediapipe==0.10.21

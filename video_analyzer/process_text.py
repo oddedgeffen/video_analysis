@@ -1,27 +1,60 @@
-import json
 import torch
 import os
 import cv2
 from pathlib import Path
+from fractions import Fraction
 from typing import Dict, List, Union, Tuple
-from moviepy.editor import VideoFileClip
 from faster_whisper import WhisperModel
+import subprocess
+from pathlib import Path
+import imageio_ffmpeg as im_ffmpeg
+import librosa
 
 def extract_audio(video_path: str, audio_path: str = "temp_audio.wav") -> str:
     """
-    Extract audio from video file and save it temporarily
-    
-    Args:
-        video_path: Path to input video file
-        audio_path: Path to save temporary audio file
-        
-    Returns:
-        Path to the saved audio file
+    Extract audio from video file using imageio-ffmpeg's bundled executable
     """
-    video = VideoFileClip(video_path)
-    video.audio.write_audiofile(audio_path, verbose=False, logger=None)
-    video.close()
-    return audio_path
+    
+    
+    try:
+        # Get the bundled im_ffmpeg executable path
+        im_ffmpeg_exe = im_ffmpeg.get_ffmpeg_exe()
+        
+        # Ensure output directory exists
+        Path(audio_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        # FFmpeg command
+        cmd = [
+            im_ffmpeg_exe,
+            '-i', video_path,
+            '-vn',  # No video
+            '-acodec', 'pcm_s16le',  # WAV format
+            '-ar', '16000',  # Sample rate
+            '-ac', '1',  # Mono
+            '-y',  # Overwrite
+            audio_path
+        ]
+        
+        # Run the command
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode != 0:
+            print(f"FFmpeg stderr: {result.stderr}")
+            raise RuntimeError(f"FFmpeg failed with return code {result.returncode}")
+        
+        if not Path(audio_path).exists():
+            raise FileNotFoundError(f"Audio file was not created: {audio_path}")
+            
+        print(f"Successfully extracted audio to {audio_path}")
+        
+    except Exception as e:
+        print(f"Error extracting audio: {str(e)}")
+        raise
 
 def transcribe_audio(
     audio_path: str,
@@ -72,10 +105,10 @@ def transcribe_audio(
     
     # Transcribe with conservative settings
     segments, info = model.transcribe(
-        "temp_audio.wav",
+        audio_path,
         language="en",
         beam_size=10,           # Conservative beam size
-        vad_filter=False,       # Use VAD to skip silence
+        vad_filter=use_vad,       # Use VAD to skip silence
         initial_prompt=None,   # No prompt needed
         word_timestamps=True  # Disable word timestamps to save memory
     )
@@ -111,9 +144,29 @@ def transcribe_audio(
     
     return results, " ".join(full_text)
 
-def video_to_text(
+def get_video_info(video_path, dst_audio_path):
+    
+    duration = librosa.get_duration(path=dst_audio_path)
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Could not open video file: {video_path}")
+    total_frames = 0
+    while True:
+        ret, frame = cap.read()
+        if total_frames == 0:
+            frame_height, frame_width = frame.shape[:2]
+        if not ret:
+            break
+        total_frames += 1
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Reset to beginning
+    fps = int(total_frames / duration)
+    cap.release()
+    return fps, total_frames, duration, frame_width, frame_height
+
+
+def analyze_text(
     video_path: str,
-    output_json: str = None,
+    dst_audio_path: str,
     model_size: str = "base",
     language: str = None,
     cleanup: bool = True,
@@ -124,7 +177,6 @@ def video_to_text(
     
     Args:
         video_path: Path to input video file
-        output_json: Path to save JSON output (optional)
         model_size: Size of the Whisper model to use
         language: Language code or None for auto-detection
         cleanup: Whether to remove temporary audio file
@@ -132,37 +184,40 @@ def video_to_text(
     Returns:
         Dictionary containing segments, full transcript, and video metadata
     """
-    # Get video metadata
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = total_frames / fps
-    cap.release()
-    
-    # Extract audio
-    temp_audio = "temp_audio.wav"
-    audio_path = extract_audio(video_path, temp_audio)
-    print('audio_path', audio_path)
-    # Transcribe
-    segments, full_text = transcribe_audio(audio_path, video_path, model_size, language, use_vad)
+
+    extract_audio(video_path, dst_audio_path)
+    print('audio_path', dst_audio_path)
+    fps, total_frames, duration, frame_width, frame_height = get_video_info(video_path, dst_audio_path)
+    segments, full_text = transcribe_audio(dst_audio_path, video_path, model_size, language, use_vad)
     
     # Create result dictionary with video metadata
     result = {
         "video_metadata": {
             "fps": fps,
             "total_frames": total_frames,
-            "duration_seconds": duration
+            "duration_seconds": duration,
+            "frame_width": frame_width,
+            "frame_height": frame_height
         },
         "segments": segments,
         "full_text": full_text
     }
     
-    # Cleanup temporary audio file
-    if cleanup:
-        Path(audio_path).unlink(missing_ok=True)
     
     # Log completion
     print("\nTranscription completed successfully!")
     print(f"Number of segments: {len(result['segments'])}")
     
     return result
+
+if __name__ == "__main__":
+    video_path = r"C:\video_analysis\code\video_analysis_saas\media\uploads\videos\2025_09_08___21_50_08_video-1757357401352\original.webm"
+    audio_path = r"C:\video_analysis\code\video_analysis_saas\media\uploads\videos\2025_09_08___21_50_08_video-1757357401352\audio.wav"
+    result = analyze_text(video_path=video_path,
+        dst_audio_path=audio_path,
+        model_size="base",
+        language='en',
+        cleanup=True)
+    import json
+    with open(r'media\uploads\videos\2025_09_08___21_50_08_video-1757357401352\text_transcript.json', 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
