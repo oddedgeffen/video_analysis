@@ -103,8 +103,9 @@ def upload_and_process_video(request):
         
         # Process the video using the new directory structure
         # All processing artifacts will be saved in the video's directory
+        print('################  start processing')
         results = process_video_file(paths)
-        
+        print('################  video was processed')
         if results.get('status') == 'error':
             raise Exception(results['error'])
             
@@ -112,8 +113,8 @@ def upload_and_process_video(request):
         return Response({
             'videoId': timestamp,
             'status': 'completed',
-            'processing_dir': results['processing_dir'],
-            'results': results['result']
+            'processing_dir': paths['base_dir'],
+            'results': results
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
