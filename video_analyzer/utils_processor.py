@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def save_debug_transcript(transcript: dict, dst_filename: str, paths: dict) -> None:
+def save_debug_transcript(transcript: dict, dst_filename: str, paths: dict, dbg_local=False) -> None:
     """
     Save transcript and analysis metadata to debug directory if DEBUG mode is enabled
     
@@ -14,23 +14,26 @@ def save_debug_transcript(transcript: dict, dst_filename: str, paths: dict) -> N
         result: Dictionary containing transcript and analysis results
         timestamp: Timestamp string for filename
     """
-    if not settings.DEBUG:
-        return
+    if not dbg_local:
+        if not settings.DEBUG:
+            return
     dst_path = paths['base_dir'].joinpath(f'{dst_filename}.json')
     logger.info(f"Debug mode: Saving transcript to {dst_path}")
     
     with open(dst_path, 'w', encoding='utf-8') as f:
         json.dump(transcript, f, ensure_ascii=False, indent=2)
 
-def debug_print_text_analysis(result: dict) -> None:
+def debug_print_text_analysis(result: dict, dbg_local=False) -> None:
     """
     Print detailed analysis information in debug mode
     
     Args:
         result: Dictionary containing transcript and analysis results
     """
-    if not settings.DEBUG:
-        return
+    
+    if not dbg_local:
+        if not settings.DEBUG:
+            return
         
     logger.info("\n=== Video Analysis Debug Information ===")
     
@@ -61,3 +64,27 @@ def debug_print_text_analysis(result: dict) -> None:
             logger.info(f"Start: {segment.get('start', 0):.2f}s")
             logger.info(f"End: {segment.get('end', 0):.2f}s")
             logger.info(f"Text: {segment.get('text', '')}")
+
+def print_voice_features(enriched_transcript, dbg_local=False):
+    if not dbg_local:
+        if not settings.DEBUG:
+            return
+    print("\nSegment statistics:")
+    for i, segment in enumerate(enriched_transcript['segments']):
+        print(f"\nSegment {i+1}:")
+        print(f"Text: {segment['text'][:50]}...")
+        print(f"Duration: {segment['end'] - segment['start']:.1f}s")
+        print(f"Speaking rate: {segment['voice_features']['rate']['words_per_minute']:.1f} words/min")
+        print(f"Flags: {', '.join(k for k, v in segment['voice_features']['derived_flags'].items() if v)}")
+
+    # Print summary of available features
+    print("\nEnriched transcript now contains:")
+    print("- Visual features (face analysis)")
+    print("- Voice features:")
+    print("  - Energy metrics (RMS, dB)")
+    print("  - Pitch statistics (F0)")
+    print("  - Speaking rate")
+    print("  - Pause analysis")
+    print("  - Spectral features")
+    print("  - Voice quality metrics")
+    print("  - Derived flags (too_quiet, monotone, too_fast, choppy)")

@@ -32,13 +32,11 @@ def get_video_directory_structure(video_id: str) -> dict:
         Dictionary containing all relevant paths
     """
     base_dir = Path(settings.MEDIA_ROOT) / 'uploads' / 'videos' / video_id
-    frames_dir = base_dir / 'processed_frames'
     
     return {
         'base_dir': base_dir,
         'original_video': base_dir / 'original.webm',
         'audio_file': base_dir / 'audio.wav',
-        'frames_dir': frames_dir,
         'results_file': base_dir / 'results.json'
     }
 
@@ -94,7 +92,6 @@ def upload_and_process_video(request):
         # Create directory structure for this video
         paths = get_video_directory_structure(filename_no_ext)
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
-        paths['frames_dir'].mkdir(parents=True, exist_ok=True)
         
         # Save the uploaded file in its dedicated directory
         # In development: Saves to local filesystem

@@ -399,6 +399,23 @@ def sample_frames(
     cap.release()
     return frames
 
+def convert_numpy_in_dict(obj):
+    if isinstance(obj, dict):
+        return {key: convert_numpy_in_dict(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_in_dict(item) for item in obj]
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()  # Convert arrays to lists
+    else:
+        return obj
+
+
 
 def process_video_segments(text_transcript: dict, video_path: str, frame_interval: int = 30) -> Dict:
     """
@@ -447,7 +464,7 @@ def process_video_segments(text_transcript: dict, video_path: str, frame_interva
         processed_segment['visual_info'] = visual_info
         processed_segments.append(processed_segment)
     
-    return {
+    final_dict =  {
         'segments': processed_segments,
         'metadata': {
             'total_segments': len(processed_segments),
@@ -459,9 +476,8 @@ def process_video_segments(text_transcript: dict, video_path: str, frame_interva
             }
         }
     }
-
-
-
+    final_dict = convert_numpy_in_dict(final_dict)
+    return final_dict
 
 if __name__ == "__main__":
     

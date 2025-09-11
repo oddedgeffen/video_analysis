@@ -59,6 +59,7 @@ def extract_audio(video_path: str, audio_path: str = "temp_audio.wav") -> str:
 def transcribe_audio(
     audio_path: str,
     video_path: str,
+    fps: int,
     model_size: str = "tiny.en",
     language: str = None,
     use_vad: bool = True  # Enable VAD by default now that we have onnxruntime
@@ -117,12 +118,6 @@ def transcribe_audio(
     # Process segments
     results = []
     full_text = []
-    
-    # Get video metadata first (we'll need fps for frame calculations)
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.release()
     
     for segment in segments:
         # Calculate frame numbers for this segment
@@ -188,7 +183,7 @@ def analyze_text(
     extract_audio(video_path, dst_audio_path)
     print('audio_path', dst_audio_path)
     fps, total_frames, duration, frame_width, frame_height = get_video_info(video_path, dst_audio_path)
-    segments, full_text = transcribe_audio(dst_audio_path, video_path, model_size, language, use_vad)
+    segments, full_text = transcribe_audio(dst_audio_path, video_path, fps, model_size, language, use_vad)
     
     # Create result dictionary with video metadata
     result = {
