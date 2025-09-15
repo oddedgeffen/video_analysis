@@ -1,42 +1,138 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box,
   Typography,
   Paper,
   CircularProgress,
-  Alert
+  Alert,
+  TextField,
+  IconButton,
+  useTheme
 } from '@mui/material';
+import SendIcon from '@mui/icons-material/Send';
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/api';
 
+const Message = ({ role, content }) => {
+  const theme = useTheme();
+  const isAssistant = role === 'assistant';
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        justifyContent: isAssistant ? 'flex-start' : 'flex-end',
+        mb: 2
+      }}
+    >
+      <Paper
+        sx={{
+          p: 2,
+          maxWidth: '70%',
+          bgcolor: isAssistant ? 'grey.100' : theme.palette.primary.main,
+          color: isAssistant ? 'text.primary' : 'white',
+          borderRadius: 2
+        }}
+      >
+        <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+          {content}
+        </Typography>
+      </Paper>
+    </Box>
+  );
+};
+
 const ChatPage = () => {
+  const theme = useTheme();
   const { videoId } = useParams();
+  const messagesEndRef = useRef(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [analysisResults, setAnalysisResults] = useState(null);
+  const [conversationId, setConversationId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [question, setQuestion] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [questionsRemaining, setQuestionsRemaining] = useState(10);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    const fetchAnalysis = async () => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    const checkVideoStatus = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/video-analysis/${videoId}/`);
-        setAnalysisResults(response.data);
-        setError(null);
+        const statusResponse = await axios.get(`${API_BASE_URL}/video-status/${videoId}/`);
+        // Debug log
+        console.log('ChatPage status poll', statusResponse.data);
+
+        if (statusResponse.data.status === 'completed') {
+          // Video is ready, start the chat
+          const chatResponse = await axios.post(`${API_BASE_URL}/chat/start/${videoId}/`);
+          console.log('Chat start response', chatResponse.data);
+          const { conversation_id, messages: initialMessages, questions_remaining } = chatResponse.data;
+
+          setConversationId(conversation_id);
+          setMessages(initialMessages);
+          setQuestionsRemaining(questions_remaining);
+          setError(null);
+          setLoading(false);
+        } else if (statusResponse.data.status === 'processing') {
+          // Keep polling
+          setTimeout(checkVideoStatus, 2000);
+        } else if (statusResponse.data.status === 'failed') {
+          throw new Error(statusResponse.data.error || 'Video processing failed');
+        }
       } catch (err) {
-        setError(err.response?.data?.error || 'Failed to fetch analysis results');
-        console.error('Analysis fetch error:', err);
-      } finally {
+        console.error('ChatPage init error', err);
+        // If backend directory isn't ready yet, keep polling instead of erroring
+        if (err?.response?.status === 404) {
+          setTimeout(checkVideoStatus, 2000);
+          return;
+        }
+        setError(err.response?.data?.error || 'Failed to start chat');
         setLoading(false);
       }
     };
 
-    fetchAnalysis();
+    checkVideoStatus();
   }, [videoId]);
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <CircularProgress />
+      <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
+          <Typography variant="h4" gutterBottom>
+            Video Analysis Chat
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 3,
+            p: 3
+          }}
+        >
+          <CircularProgress size={60} />
+          <Typography variant="h6" align="center">
+            Processing Your Video
+          </Typography>
+          <Typography variant="body1" align="center" color="text.secondary">
+            We're analyzing your video and preparing the AI assistant.
+            <br />
+            This may take a few minutes depending on the video length.
+          </Typography>
+        </Box>
       </Box>
     );
   }
@@ -49,19 +145,85 @@ const ChatPage = () => {
     );
   }
 
+  const handleQuestionSubmit = async (e) => {
+    e.preventDefault();
+    if (!question.trim() || asking || questionsRemaining <= 0) return;
+
+    setAsking(true);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/chat/question/${conversationId}/`, {
+        question: question.trim()
+      });
+
+      const { answer, questions_remaining } = response.data;
+
+      setMessages([
+        ...messages,
+        { role: 'user', content: question },
+        { role: 'assistant', content: answer }
+      ]);
+      setQuestionsRemaining(questions_remaining);
+      setQuestion('');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send question');
+      console.error('Question error:', err);
+    } finally {
+      setAsking(false);
+    }
+  };
+
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Video Analysis Results
-      </Typography>
-      
-      {/* Display analysis results here */}
-      <Paper sx={{ p: 3, mt: 3 }}>
-        <Typography variant="body1">
-          Analysis results for video ID: {videoId}
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Typography variant="h4" gutterBottom>
+          Video Analysis Chat
         </Typography>
-        {/* Add more UI components to display the analysis results */}
-      </Paper>
+        <Typography variant="body2" color="text.secondary">
+          Questions remaining: {questionsRemaining}
+        </Typography>
+      </Box>
+
+      <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
+        {messages.map((message, index) => (
+          <Message key={index} role={message.role} content={message.content} />
+        ))}
+        <div ref={messagesEndRef} />
+      </Box>
+
+      <Box
+        component="form"
+        onSubmit={handleQuestionSubmit}
+        sx={{
+          p: 2,
+          borderTop: 1,
+          borderColor: 'divider',
+          bgcolor: 'background.paper'
+        }}
+      >
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <TextField
+            fullWidth
+            variant="outlined"
+            placeholder="Ask a question about the video..."
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            disabled={asking || questionsRemaining <= 0}
+            sx={{ bgcolor: 'white' }}
+          />
+          <IconButton
+            type="submit"
+            color="primary"
+            disabled={!question.trim() || asking || questionsRemaining <= 0}
+          >
+            <SendIcon />
+          </IconButton>
+        </Box>
+        {questionsRemaining <= 0 && (
+          <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+            You have reached the maximum number of questions for this video.
+          </Typography>
+        )}
+      </Box>
     </Box>
   );
 };

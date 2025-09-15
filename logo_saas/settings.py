@@ -12,6 +12,10 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -218,3 +222,17 @@ SESSION_COOKIE_DOMAIN = None  # Allow cookies to work across subdomains
 CSRF_COOKIE_DOMAIN = None    # Allow CSRF cookies to work across subdomains
 SESSION_COOKIE_SAMESITE = 'Lax'  # More permissive than 'Strict' but still secure
 CSRF_COOKIE_SAMESITE = 'Lax'
+
+# Chat settings
+MAX_QUESTIONS_PER_VIDEO = int(os.environ.get('MAX_QUESTIONS_PER_VIDEO', '10'))
+CLAUDE_API_KEY = os.environ.get('CLAUDE_API_KEY', '')  # Required for production
+
+# Load LLM guidelines from file (default to improved_llm_guidelines.txt at project root)
+GUIDELINES_FILE = os.environ.get('LLM_GUIDELINES_FILE', str(BASE_DIR / 'improved_llm_guidelines.txt'))
+
+
+if os.path.exists(GUIDELINES_FILE):
+    with open(GUIDELINES_FILE, 'r', encoding='utf-8') as f:
+        INITIAL_SYSTEM_PROMPT = f.read()
+else:
+    raise ValueError('system prompt cant be found')
