@@ -30,14 +30,17 @@ const Message = ({ role, content }) => {
         sx={{
           p: 2,
           maxWidth: '70%',
-          bgcolor: isAssistant ? 'grey.100' : theme.palette.primary.main,
-          color: isAssistant ? 'text.primary' : 'white',
-          borderRadius: 2
+          bgcolor: isAssistant ? '#1e1e1e' : theme.palette.primary.main,
+          color: 'white',
+          borderRadius: 2,
+          boxShadow: 3
         }}
       >
-        <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-          {content}
-        </Typography>
+        <Typography
+          variant="body1"
+          sx={{ whiteSpace: 'pre-wrap' }}
+          dangerouslySetInnerHTML={{ __html: content }}
+        />
       </Paper>
     </Box>
   );
@@ -173,17 +176,33 @@ const ChatPage = () => {
   };
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h4" gutterBottom>
+    <Box sx={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      bgcolor: '#121212',
+      color: 'white'
+    }}>
+      <Box sx={{
+        p: 3,
+        borderBottom: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        bgcolor: '#1e1e1e'
+      }}>
+        <Typography variant="h4" gutterBottom sx={{ color: 'white' }}>
           Video Analysis Chat
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
           Questions remaining: {questionsRemaining}
         </Typography>
       </Box>
 
-      <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
+      <Box sx={{
+        flex: 1,
+        p: 3,
+        overflow: 'auto',
+        bgcolor: '#121212'
+      }}>
         {messages.map((message, index) => (
           <Message key={index} role={message.role} content={message.content} />
         ))}
@@ -196,26 +215,58 @@ const ChatPage = () => {
         sx={{
           p: 2,
           borderTop: 1,
-          borderColor: 'divider',
-          bgcolor: 'background.paper'
+          borderColor: 'rgba(255,255,255,0.1)',
+          bgcolor: '#1e1e1e'
         }}
       >
         <Box sx={{ display: 'flex', gap: 1 }}>
           <TextField
             fullWidth
+            multiline
+            maxRows={4}
             variant="outlined"
-            placeholder="Ask a question about the video..."
+            placeholder={asking ? "Processing your question..." : "Ask a question about the video..."}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             disabled={asking || questionsRemaining <= 0}
-            sx={{ bgcolor: 'white' }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (question.trim() && !asking && questionsRemaining > 0) {
+                  handleQuestionSubmit(e);
+                }
+              }
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                bgcolor: '#1e1e1e',
+                opacity: asking ? 0.7 : 1,
+                transition: 'opacity 0.2s',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                '&:hover fieldset': { borderColor: theme.palette.primary.main },
+                '& .MuiInputBase-input': {
+                  color: 'white'
+                },
+                '& textarea::placeholder': {
+                  color: 'rgba(255,255,255,0.7)',
+                  opacity: 1
+                }
+              }
+            }}
           />
           <IconButton
             type="submit"
             color="primary"
             disabled={!question.trim() || asking || questionsRemaining <= 0}
+            sx={{
+              opacity: asking ? 0.5 : 1,
+              transition: 'opacity 0.2s',
+              '&.Mui-disabled': {
+                opacity: 0.3
+              }
+            }}
           >
-            <SendIcon />
+            {asking ? <CircularProgress size={24} /> : <SendIcon />}
           </IconButton>
         </Box>
         {questionsRemaining <= 0 && (

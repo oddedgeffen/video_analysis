@@ -29,9 +29,12 @@ Use this multimodal analysis data to provide comprehensive feedback and answer a
                 messages=[{"role": "user", "content": initial_prompt}]
             )
             
+            response_text = response.content[0].text
+            # Convert markdown bold to HTML
+ 
             return {
                 'success': True,
-                'analysis': response.content[0].text,
+                'analysis': response_text,
                 'initial_prompt': initial_prompt
             }
         except Exception as e:

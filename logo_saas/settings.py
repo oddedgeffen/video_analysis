@@ -228,7 +228,7 @@ MAX_QUESTIONS_PER_VIDEO = int(os.environ.get('MAX_QUESTIONS_PER_VIDEO', '10'))
 CLAUDE_API_KEY = os.environ.get('CLAUDE_API_KEY', '')  # Required for production
 
 # Load LLM guidelines from file (default to improved_llm_guidelines.txt at project root)
-GUIDELINES_FILE = os.environ.get('LLM_GUIDELINES_FILE', str(BASE_DIR / 'improved_llm_guidelines.txt'))
+GUIDELINES_FILE = os.environ.get('LLM_GUIDELINES_FILE', str(BASE_DIR / 'improved_llm_guidelines_v2.txt'))
 
 
 if os.path.exists(GUIDELINES_FILE):
