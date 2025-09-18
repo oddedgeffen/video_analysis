@@ -1,1 +1,1 @@
-web: gunicorn logo_saas.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 60 
+web: gunicorn video_analyze.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 60 

@@ -10,7 +10,7 @@ from django.conf import settings
 import django
 
 # Initialize Django to access settings
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'logo_saas.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'video_analyze.settings')
 django.setup()
 
 # Get S3 credentials from Django settings

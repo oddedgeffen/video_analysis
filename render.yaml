@@ -5,7 +5,7 @@ services:
     env: python
     plan: starter
     buildCommand: ./build.sh
-    startCommand: gunicorn logo_saas.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 120 --max-requests 1 --max-requests-jitter 0
+    startCommand: gunicorn video_analyze.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 120 --max-requests 1 --max-requests-jitter 0
     envVars:
       - key: DATABASE_URL
         fromDatabase:
