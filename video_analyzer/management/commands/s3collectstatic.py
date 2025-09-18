@@ -2,7 +2,7 @@ import os
 from django.core.management.base import BaseCommand
 from django.contrib.staticfiles import finders
 from django.core.files.base import ContentFile
-from logo_saas.storage import StaticStorage
+from video_analyze.storage import StaticStorage
 
 
 class Command(BaseCommand):

@@ -1,5 +1,5 @@
 """
-WSGI config for logo_saas project.
+WSGI config for video_analyze project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,6 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "logo_saas.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "video_analyze.settings")
 
 application = get_wsgi_application()
