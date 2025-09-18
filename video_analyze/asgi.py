@@ -1,5 +1,5 @@
 """
-ASGI config for logo_saas project.
+ASGI config for video_analyze project.
 
 It exposes the ASGI callable as a module-level variable named ``application``.
 

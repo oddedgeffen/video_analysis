@@ -1,5 +1,5 @@
 """
-WSGI config for logo_saas project.
+WSGI config for video_analyze project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
