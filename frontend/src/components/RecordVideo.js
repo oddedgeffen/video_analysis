@@ -304,8 +304,7 @@ const RecordVideo = () => {
       formData.append('video', blob, filename);
       console.log('Debug: Created FormData with filename:', filename);
 
-      // Add debugger statement for frontend debugging
-      debugger;
+      // Removed stray debugger that could pause the app in dev tools
 
       // Upload video and start processing
       console.log('Debug: Sending POST request to:', `${API_BASE_URL}/process-video/`);
@@ -317,26 +316,8 @@ const RecordVideo = () => {
       });
 
       if (response.data.videoId) {
-        setProcessingStatus('processing');
-
-        const pollStatus = async () => {
-          try {
-            const statusResponse = await axios.get(`${API_BASE_URL}/video-status/${response.data.videoId}/`);
-
-            if (statusResponse.data.status === 'completed') {
-              navigate(`/analysis/${response.data.videoId}`);
-            } else if (statusResponse.data.status === 'failed') {
-              throw new Error(statusResponse.data.error || 'Processing failed');
-            } else {
-              setTimeout(pollStatus, 2000);
-            }
-          } catch (err) {
-            setError('Failed to check processing status: ' + (err.message || 'Unknown error'));
-            setProcessingStatus('error');
-          }
-        };
-
-        pollStatus();
+        // Immediately navigate to chat; ChatPage handles polling and UI
+        navigate(`/chat/${response.data.videoId}`);
       } else {
         throw new Error('No video ID received from server');
       }

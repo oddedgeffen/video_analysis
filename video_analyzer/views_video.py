@@ -11,6 +11,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 from .video_processor import process_video_file
+from .models import ProcessedVideo
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +39,49 @@ def get_video_directory_structure(video_id: str) -> dict:
         'base_dir': base_dir,
         'original_video': base_dir / 'original.webm',
         'audio_file': base_dir / 'audio.wav',
+        'frames_dir': base_dir / 'processed_frames',
         'results_file': base_dir / 'results.json'
     }
+
+
+def _process_video_async(paths: dict, timestamp: str) -> None:
+    """Background processing task that generates results.json when done."""
+    try:
+        logger.info('Background processing started')
+        results = process_video_file(paths)
+
+        # Ensure base directory exists
+        paths['base_dir'].mkdir(parents=True, exist_ok=True)
+
+        # Write canonical results file for polling endpoint
+        with open(paths['results_file'], 'w', encoding='utf-8') as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+
+        # Create DB record referencing the results file
+        try:
+            video = ProcessedVideo.objects.create(
+                video_file=str(paths['original_video']),
+                result_file=str(paths['results_file']),
+                status='completed',
+                duration=results.get('video_metadata', {}).get('duration_seconds'),
+                frame_count=results.get('video_metadata', {}).get('total_frames'),
+                fps=results.get('video_metadata', {}).get('fps'),
+                resolution=f"{results.get('video_metadata', {}).get('frame_width')}x{results.get('video_metadata', {}).get('frame_height')}"
+            )
+            logger.info(f"ProcessedVideo created with id={video.id}")
+        except Exception as db_err:
+            logger.error(f"Failed to create ProcessedVideo: {db_err}")
+
+        logger.info('Background processing finished successfully')
+    except Exception as e:
+        logger.error(f"Background processing failed: {e}")
+        # Write an error status file so the poller can surface failure
+        error_payload = {"status": "error", "error": str(e)}
+        try:
+            with open(paths['results_file'], 'w', encoding='utf-8') as f:
+                json.dump(error_payload, f, ensure_ascii=False, indent=2)
+        except Exception as write_err:
+            logger.error(f"Failed writing error results file: {write_err}")
 
 @api_view(['POST'])
 def upload_and_process_video(request):
@@ -101,20 +144,14 @@ def upload_and_process_video(request):
                 f.write(chunk)
         logger.info(f"Saved video to {paths['original_video']}")
         
-        # Process the video using the new directory structure
-        # All processing artifacts will be saved in the video's directory
-        print('################  start processing')
-        results = process_video_file(paths)
-        print('################  video was processed')
-        if results.get('status') == 'error':
-            raise Exception(results['error'])
-            
-        # Return processing directory and results
+        # Kick off background processing so the request returns immediately
+        threading.Thread(target=_process_video_async, args=(paths, timestamp), daemon=True).start()
+
+        # Immediately inform the client to start polling
         return Response({
-            'videoId': timestamp,
-            'status': 'completed',
-            'processing_dir': paths['base_dir'],
-            'results': results
+            'videoId': filename_no_ext,
+            'status': 'processing',
+            'processing_dir': str(paths['base_dir'])
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
@@ -195,7 +232,14 @@ def video_status(request, video_id):
         if paths['results_file'].exists():
             with open(paths['results_file'], 'r', encoding='utf-8') as f:
                 results = json.load(f)
-            
+
+            # If the background job reported an error
+            if isinstance(results, dict) and results.get('status') == 'error':
+                return Response({
+                    'status': 'failed',
+                    'error': results.get('error', 'Processing failed')
+                })
+
             # Include file paths in response
             results['file_paths'] = {
                 'video': str(paths['original_video']),
@@ -203,7 +247,7 @@ def video_status(request, video_id):
                 'frames': str(paths['frames_dir']),
                 'results': str(paths['results_file'])
             }
-            
+
             return Response({
                 'status': 'completed',
                 'base_dir': str(paths['base_dir']),
@@ -211,13 +255,13 @@ def video_status(request, video_id):
             })
         else:
             # Check processing status
-            if paths['original_video'].exists():
-                # Video exists but processing not complete
+            if paths['base_dir'].exists():
+                # Directory exists; treat as processing regardless of file write race
                 status_info = {
                     'status': 'processing',
                     'base_dir': str(paths['base_dir']),
                     'progress': {
-                        'video_uploaded': True,
+                        'video_uploaded': paths['original_video'].exists(),
                         'audio_extracted': paths['audio_file'].exists(),
                         'frames_processed': paths['frames_dir'].exists() and any(paths['frames_dir'].iterdir())
                     }
