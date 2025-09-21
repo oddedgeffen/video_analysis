@@ -7,41 +7,131 @@ from django.conf import settings
 import os
 import tempfile
 import logging
+import mimetypes
 import json
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 from .video_processor import process_video_file
 from .models import ProcessedVideo
 import threading
+import boto3
 
 logger = logging.getLogger(__name__)
 
-def get_video_directory_structure(video_id: str) -> dict:
+def get_video_directory_structure(video_id: str, ext: str = '.webm') -> dict:
     """
-    Get standardized paths for video processing directory structure
-    
-    Directory Structure:
-    media/uploads/videos/{video_id}/
-    ├── original.webm      # Original uploaded video
-    ├── audio.wav         # Extracted audio
-    ├── processed_frames/ # Directory for frame-by-frame analysis
-    └── results.json      # Processing results and metadata
-    
-    Args:
-        video_id: Unique identifier for the video (timestamp)
-    
-    Returns:
-        Dictionary containing all relevant paths
+    Get standardized paths for video processing.
+    - Local dev: Uses MEDIA_ROOT for persistent debugging
+    - Production/S3: Uses temp directories for ephemeral processing
     """
-    base_dir = Path(settings.MEDIA_ROOT) / 'uploads' / 'videos' / video_id
+    if getattr(settings, 'USE_S3', False):
+        # Production: Use temp directories since files live in S3
+        base_dir = Path(tempfile.gettempdir()) / 'video_processing' / video_id
+    else:
+        # Local dev: Use MEDIA_ROOT for easier debugging/inspection
+        base_dir = Path(settings.MEDIA_ROOT) / 'uploads' / 'videos' / video_id
     
     return {
         'base_dir': base_dir,
-        'original_video': base_dir / 'original.webm',
+        'original_video': base_dir / f'original{ext}',
         'audio_file': base_dir / 'audio.wav',
-        'frames_dir': base_dir / 'processed_frames',
         'results_file': base_dir / 'results.json'
     }
+
+
+@api_view(['POST'])
+def s3_presign_upload(request):
+    """
+    Return presigned POST data for direct S3 upload from the browser.
+    Body (optional): { content_type: 'video/webm' }
+    Response: { url, fields, key, bucket }
+    """
+    try:
+        if not getattr(settings, 'USE_S3', False):
+            return Response({'error': 'S3 is not enabled'}, status=status.HTTP_400_BAD_REQUEST)
+
+        region = getattr(settings, 'AWS_S3_REGION_NAME', None)
+        bucket = settings.AWS_STORAGE_BUCKET_NAME
+        s3_client = boto3.client('s3', region_name=region)
+
+        timestamp = datetime.now().strftime('%Y_%m_%d___%H_%M_%S')
+        unique = uuid4().hex
+        # Allow client to send original extension; default to .webm
+        ext = request.data.get('ext', '.webm')
+        if not ext.startswith('.'):
+            ext = f'.{ext}'
+        # If content_type not provided, infer from extension
+        content_type = request.data.get('content_type')
+        if not content_type:
+            guessed, _ = mimetypes.guess_type(f'file{ext}')
+            content_type = guessed or 'application/octet-stream'
+        key = f"uploads/videos/{timestamp}_{unique}/original{ext}"
+
+        conditions = [
+            {"acl": "private"},
+            ["content-length-range", 1, 1_000_000_000],
+        ]
+        fields = {"acl": "private", "Content-Type": content_type}
+
+        presigned = s3_client.generate_presigned_post(
+            Bucket=bucket,
+            Key=key,
+            Fields=fields,
+            Conditions=conditions,
+            ExpiresIn=3600,
+        )
+
+        return Response({
+            'url': presigned['url'],
+            'fields': presigned['fields'],
+            'key': key,
+            'bucket': bucket
+        })
+    except Exception as e:
+        logger.error(f"Error generating presigned POST: {e}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def process_video_from_s3(request):
+    """
+    Start processing a video that was uploaded directly to S3.
+    Body: { key: 'uploads/videos/.../original.webm' }
+    """
+    try:
+        if 'key' not in request.data:
+            return Response({'error': 'Missing S3 key'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not getattr(settings, 'USE_S3', False):
+            return Response({'error': 'S3 is not enabled'}, status=status.HTTP_400_BAD_REQUEST)
+
+        s3_key = request.data['key']
+        bucket = settings.AWS_STORAGE_BUCKET_NAME
+
+        timestamp = datetime.now().strftime('%Y_%m_%d___%H_%M_%S')
+        video_id = f"{timestamp}_{uuid4().hex}"
+        # Use the actual extension from the S3 key
+        ext = Path(s3_key).suffix.lower() or '.webm'
+        paths = get_video_directory_structure(video_id, ext)
+        paths['base_dir'].mkdir(parents=True, exist_ok=True)
+
+        region = getattr(settings, 'AWS_S3_REGION_NAME', None)
+        s3_client = boto3.client('s3', region_name=region)
+        logger.info(f"Downloading from s3://{bucket}/{s3_key} to {paths['original_video']}")
+        with open(paths['original_video'], 'wb') as f:
+            s3_client.download_fileobj(bucket, s3_key, f)
+
+        threading.Thread(target=_process_video_async, args=(paths, timestamp), daemon=True).start()
+
+        return Response({
+            'videoId': video_id,
+            'status': 'processing',
+            'processing_dir': str(paths['base_dir'])
+        })
+    except Exception as e:
+        logger.error(f"Error starting processing from S3: {e}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def _process_video_async(paths: dict, timestamp: str) -> None:
@@ -53,9 +143,22 @@ def _process_video_async(paths: dict, timestamp: str) -> None:
         # Ensure base directory exists
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
 
-        # Write canonical results file for polling endpoint
+        # Write canonical results file for polling endpoint (local)
         with open(paths['results_file'], 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
+
+        # Also upload results.json to S3 when enabled to keep remote artifacts in sync
+        if getattr(settings, 'USE_S3', False):
+            try:
+                video_id = paths['base_dir'].name
+                s3_results_key = f"uploads/videos/{video_id}/results.json"
+                from django.core.files.base import ContentFile
+                from django.core.files.storage import default_storage
+                payload = json.dumps(results, ensure_ascii=False, indent=2).encode('utf-8')
+                saved_key = default_storage.save(s3_results_key, ContentFile(payload))
+                logger.info(f"Uploaded results.json to S3 at '{saved_key}'")
+            except Exception as e:
+                logger.error(f"Failed to upload results.json to S3: {e}")
 
         # Create DB record referencing the results file
         try:
@@ -126,23 +229,40 @@ def upload_and_process_video(request):
 
     video_file = request.FILES['video']
     
-    # Generate a unique filename
+    # Generate a unique filename and detect original extension
     timestamp = datetime.now().strftime('%Y_%m_%d___%H_%M_%S')
+    original_ext = Path(video_file.name).suffix.lower() or '.webm'
     filename = f'{timestamp}_{video_file.name}'
     filename_no_ext = Path(filename).stem
     
     try:
         # Create directory structure for this video
+        paths = get_video_directory_structure(filename_no_ext, original_ext)
+        # paths['base_dir'].mkdir(parents=True, exist_ok=True)
+        
+        # Save the uploaded file via Django's storage backend
+        # If USE_S3=True, this writes to S3; otherwise local filesystem
+        storage_rel_path = f"uploads/videos/{filename_no_ext}/original{original_ext}"
+        saved_name = default_storage.save(storage_rel_path, ContentFile(video_file.read()))
+        try:
+            file_url = default_storage.url(saved_name)
+            logger.info(f"Stored uploaded video at '{saved_name}', url='{file_url}'")
+        except Exception:
+            logger.info(f"Stored uploaded video at '{saved_name}'")
+
+        # Ensure a local copy exists for processing pipeline
+        # Download from storage to local processing directory
         paths = get_video_directory_structure(filename_no_ext)
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
-        
-        # Save the uploaded file in its dedicated directory
-        # In development: Saves to local filesystem
-        # In production: Uploads to S3 bucket
-        with open(paths['original_video'], 'wb') as f:
-            for chunk in video_file.chunks():
-                f.write(chunk)
-        logger.info(f"Saved video to {paths['original_video']}")
+        # Update original_video path to use the correct extension
+        paths['original_video'] = paths['base_dir'] / f"original{original_ext}"
+        with default_storage.open(saved_name, 'rb') as src, open(paths['original_video'], 'wb') as dst:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                dst.write(chunk)
+        logger.info(f"Prepared local processing copy at {paths['original_video']}")
         
         # Kick off background processing so the request returns immediately
         threading.Thread(target=_process_video_async, args=(paths, timestamp), daemon=True).start()
@@ -244,7 +364,6 @@ def video_status(request, video_id):
             results['file_paths'] = {
                 'video': str(paths['original_video']),
                 'audio': str(paths['audio_file']),
-                'frames': str(paths['frames_dir']),
                 'results': str(paths['results_file'])
             }
 
@@ -263,7 +382,6 @@ def video_status(request, video_id):
                     'progress': {
                         'video_uploaded': paths['original_video'].exists(),
                         'audio_extracted': paths['audio_file'].exists(),
-                        'frames_processed': paths['frames_dir'].exists() and any(paths['frames_dir'].iterdir())
                     }
                 }
                 return Response(status_info)

@@ -14,6 +14,10 @@ urlpatterns = [
     # Response: { status, processing_dir?, results?, error? }
     path('video-status/<str:video_id>/', views_video.video_status, name='video-status'),
 
+    # S3 direct upload flow
+    path('s3/presign/', views_video.s3_presign_upload, name='s3-presign-upload'),
+    path('process-video-from-s3/', views_video.process_video_from_s3, name='process-video-from-s3'),
+
     # Chat endpoints
     path('chat/start/<str:video_id>/', views_chat.start_chat, name='start-chat'),
     path('chat/question/<int:conversation_id>/', views_chat.ask_question, name='ask-question'),

@@ -10,7 +10,7 @@ except:
     from process_voice import process_voice_features
     from utils_processor import save_debug_transcript, debug_print_text_analysis, print_voice_features
 
-DEBUG = True
+DEBUG = False
 
 def process_video_file(paths):
     """Main function to process a video file"""
