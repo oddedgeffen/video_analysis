@@ -7,6 +7,73 @@ from .models import VideoConversation
 from .views_video import get_video_directory_structure
 from .services.claude_service import ClaudeVideoAnalysisService
 import json
+import boto3
+import threading
+import logging
+import shutil
+
+logger = logging.getLogger(__name__)
+
+def _delete_s3_assets_for_video(video_id: str) -> None:
+    """
+    Delete all S3 objects under the video's folder prefixes after transcript use.
+    Handles both legacy "uploads/videos/..." and django-storages "media/uploads/videos/..." prefixes.
+    """
+    try:
+        if not getattr(settings, 'USE_S3', False):
+            return
+        bucket = settings.AWS_STORAGE_BUCKET_NAME
+        region = getattr(settings, 'AWS_S3_REGION_NAME', None)
+        s3 = boto3.client('s3', region_name=region)
+
+        prefixes = [
+            f"uploads/videos/{video_id}/",
+            f"media/uploads/videos/{video_id}/",
+        ]
+
+        paginator = s3.get_paginator('list_objects_v2')
+        for prefix in prefixes:
+            try:
+                for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                    if 'Contents' not in page:
+                        continue
+                    objects = [{'Key': obj['Key'] } for obj in page['Contents']]
+                    # Delete in chunks of up to 1000
+                    for i in range(0, len(objects), 1000):
+                        s3.delete_objects(
+                            Bucket=bucket,
+                            Delete={
+                                'Objects': objects[i:i+1000],
+                                'Quiet': True
+                            }
+                        )
+                logger.info(f"Deleted S3 assets with prefix '{prefix}' for video_id={video_id}")
+            except Exception as inner_e:
+                logger.error(f"Failed deleting S3 objects for prefix '{prefix}': {inner_e}")
+    except Exception as e:
+        logger.error(f"Failed to delete S3 assets for video_id={video_id}: {e}")
+
+def _cleanup_assets_for_video(video_id: str) -> None:
+    """
+    Remove all artifacts related to a video from both S3 (if enabled) and local storage.
+    This is safe to run regardless of storage backend; it will no-op where not applicable.
+    """
+    try:
+        # Delete S3 objects (if enabled)
+        if getattr(settings, 'USE_S3', False):
+            _delete_s3_assets_for_video(video_id)
+
+        # Delete local processing directory (temp or MEDIA_ROOT path)
+        try:
+            paths = get_video_directory_structure(video_id)
+            base_dir = paths['base_dir']
+            if base_dir.exists():
+                shutil.rmtree(base_dir, ignore_errors=True)
+                logger.info(f"Deleted local processing directory '{base_dir}' for video_id={video_id}")
+        except Exception as local_e:
+            logger.error(f"Failed deleting local directory for video_id={video_id}: {local_e}")
+    except Exception as e:
+        logger.error(f"Cleanup failed for video_id={video_id}: {e}")
 
 @api_view(['POST'])
 def start_chat(request, video_id):
@@ -55,6 +122,12 @@ def start_chat(request, video_id):
         # Compute remaining questions based on history
         limit_info = ClaudeVideoAnalysisService().check_question_limit(convo.message_history)
         remaining = limit_info['remaining']
+
+        # After transcript is incorporated into chat, delete S3 and local artifacts asynchronously
+        try:
+            threading.Thread(target=_cleanup_assets_for_video, args=(video_id,), daemon=True).start()
+        except Exception as e:
+            logger.error(f"Failed to schedule cleanup for video_id={video_id}: {e}")
 
         return Response({
             'conversation_id': convo.id,
