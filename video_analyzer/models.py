@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django.conf import settings
 from django.db.models import JSONField
+import uuid
 
 class ChatConversation(models.Model):
     video = models.ForeignKey('ProcessedVideo', on_delete=models.CASCADE, related_name='conversations')
@@ -72,9 +73,33 @@ class VideoConversation(models.Model):
     system_prompt = models.TextField()
     message_history = JSONField(default=list)
     initial_analysis_done = models.BooleanField(default=False)
+    trial_link = models.ForeignKey('TrialLink', on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def get_question_count(self):
         user_messages = [msg for msg in self.message_history if msg.get("role") == "user"]
         return len(user_messages) - 1 if len(user_messages) > 0 else 0
+
+
+class TrialLink(models.Model):
+    code = models.CharField(max_length=50, unique=True, default=uuid.uuid4)
+    max_videos = models.IntegerField(default=5)
+    videos_used = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    def can_use(self) -> bool:
+        if not self.is_active:
+            return False
+        if self.expires_at is not None and timezone.now() >= self.expires_at:
+            return False
+        return self.videos_used < self.max_videos
+
+    def use_video_slot(self) -> bool:
+        if not self.can_use():
+            return False
+        self.videos_used = self.videos_used + 1
+        self.save(update_fields=["videos_used"]) 
+        return True

@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from .models import VideoConversation
+from .models import TrialLink
 from .views_video import get_video_directory_structure
 from .services.claude_service import ClaudeVideoAnalysisService
 import json
@@ -93,12 +94,22 @@ def start_chat(request, video_id):
         guidelines = settings.INITIAL_SYSTEM_PROMPT
         system_prompt = service.build_system_prompt(transcript_data, guidelines)
 
+        # Get trial_link if available from results
+        trial_link = None
+        trial_code = transcript_data.get('trial_code')
+        if trial_code:
+            try:
+                trial_link = TrialLink.objects.get(code=trial_code)
+            except TrialLink.DoesNotExist:
+                logger.warning(f"Trial code {trial_code} not found during chat start for video {video_id}")
+
         # Get or create the JSON-based conversation per video
         convo, created = VideoConversation.objects.get_or_create(
             video_id=video_id,
             defaults={
                 'system_prompt': system_prompt,
-                'message_history': []
+                'message_history': [],
+                'trial_link': trial_link
             }
         )
 
@@ -118,6 +129,11 @@ def start_chat(request, video_id):
             convo.initial_analysis_done = True
             convo.system_prompt = system_prompt
             convo.save()
+
+            # Use trial link slot if this is a new conversation with a trial link
+            if created and trial_link:
+                trial_link.use_video_slot()
+                logger.info(f"Used trial link slot for video {video_id}, remaining: {trial_link.max_videos - trial_link.videos_used}")
 
         # Compute remaining questions based on history
         limit_info = ClaudeVideoAnalysisService().check_question_limit(convo.message_history)
@@ -198,3 +214,25 @@ def get_conversation(request, conversation_id):
         return Response({
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def check_trial_link(request, code):
+    """
+    Check if a trial link code is valid and return usage information.
+    """
+    try:
+        trial_link = TrialLink.objects.get(code=code)
+        
+        videos_remaining = max(0, trial_link.max_videos - trial_link.videos_used)
+        
+        return Response({
+            'valid': trial_link.can_use(),
+            'videos_remaining': videos_remaining,
+            'max_videos': trial_link.max_videos,
+            'expires_at': trial_link.expires_at.isoformat() if trial_link.expires_at else None
+        })
+        
+    except TrialLink.DoesNotExist:
+        return Response({
+            'error': 'Trial link not found'
+        }, status=status.HTTP_404_NOT_FOUND)

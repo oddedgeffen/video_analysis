@@ -30,6 +30,8 @@ function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/upload" element={<RecordVideo />} />
+          <Route path="/trial/:code" element={<LandingPage />} />
+          <Route path="/trial/:code/record" element={<RecordVideo />} />
           <Route path="/admin" element={<AdminRoute />} />
           <Route path="/chat/:videoId" element={<ChatPage />} />
         </Routes>
