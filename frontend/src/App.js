@@ -2,8 +2,10 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
+import { AuthProvider } from './contexts/AuthContext';
 import RecordVideo from './components/RecordVideo';
 import AdminRoute from './components/AdminRoute';
+import AdminLogin from './components/AdminLogin';
 import LandingPage from './components/LandingPage';
 import ChatPage from './components/ChatPage';
 
@@ -26,14 +28,19 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router basename={basename}>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/upload" element={<RecordVideo />} />
-          <Route path="/admin" element={<AdminRoute />} />
-          <Route path="/chat/:videoId" element={<ChatPage />} />
-        </Routes>
-      </Router>
+      <AuthProvider>
+        <Router basename={basename}>
+          <Routes>
+            <Route path="/" element={<RecordVideo />} />
+            <Route path="/upload" element={<RecordVideo />} />
+            <Route path="/trial/:code" element={<LandingPage />} />
+            <Route path="/trial/:code/record" element={<RecordVideo />} />
+            <Route path="/admin" element={<AdminRoute />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/chat/:videoId" element={<ChatPage />} />
+          </Routes>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

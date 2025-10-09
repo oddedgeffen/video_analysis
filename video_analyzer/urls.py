@@ -22,4 +22,11 @@ urlpatterns = [
     path('chat/start/<str:video_id>/', views_chat.start_chat, name='start-chat'),
     path('chat/question/<int:conversation_id>/', views_chat.ask_question, name='ask-question'),
     path('chat/conversation/<int:conversation_id>/', views_chat.get_conversation, name='get-conversation'),
+    
+    # Trial link endpoints
+    path('trial/check/<str:code>/', views_chat.check_trial_link, name='check_trial_link'),
+    
+    # Admin authentication endpoints
+    path('admin/login/', views_chat.admin_login, name='admin_login'),
+    path('admin/check/', views_chat.check_admin_auth, name='check_admin_auth'),
 ]

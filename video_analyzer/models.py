@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django.conf import settings
 from django.db.models import JSONField
+import uuid
 
 class ChatConversation(models.Model):
     video = models.ForeignKey('ProcessedVideo', on_delete=models.CASCADE, related_name='conversations')
@@ -78,3 +79,32 @@ class VideoConversation(models.Model):
     def get_question_count(self):
         user_messages = [msg for msg in self.message_history if msg.get("role") == "user"]
         return len(user_messages) - 1 if len(user_messages) > 0 else 0
+
+
+class TrialLink(models.Model):
+    """Model for managing trial access links"""
+    code = models.CharField(max_length=36, unique=True, default=lambda: str(uuid.uuid4()))
+    max_videos = models.IntegerField(default=5)
+    videos_used = models.IntegerField(default=0)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Trial Link {self.code} - {self.videos_used}/{self.max_videos} videos used"
+    
+    def can_use(self):
+        """Check if the trial link can still be used"""
+        if not self.is_active:
+            return False
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False
+        return self.videos_used < self.max_videos
+    
+    def increment_usage(self):
+        """Increment the video usage count"""
+        self.videos_used += 1
+        self.save()
