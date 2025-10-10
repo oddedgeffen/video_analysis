@@ -143,6 +143,28 @@ def delete_unused_links():
     else:
         print("Deletion cancelled.")
 
+def delete_all_links():
+    """Delete ALL trial links"""
+    all_links = TrialLink.objects.all()
+    count = all_links.count()
+    
+    if count == 0:
+        print("No trial links found.")
+        return
+    
+    print(f"Found {count} trial link(s):")
+    for link in all_links:
+        print(f"  - {link.code} (max: {link.max_videos}, used: {link.videos_used}, created: {link.created_at})")
+    
+    print(f"\nWARNING: This will permanently delete ALL {count} trial link(s)!")
+    confirm = input("Are you absolutely sure you want to DELETE ALL trial links? (yes/no): ").lower().strip()
+    
+    if confirm in ['yes', 'y']:
+        deleted_count = all_links.delete()[0]
+        print(f"Successfully deleted {deleted_count} trial link(s).")
+    else:
+        print("Deletion cancelled.")
+
 def usage_stats():
     """Show usage statistics"""
     total_links = TrialLink.objects.count()
@@ -173,6 +195,7 @@ def show_help():
     print("  delete <code>                     - Permanently delete a trial link")
     print("  delete-expired                    - Delete all expired trial links")
     print("  delete-unused                     - Delete all unused trial links")
+    print("  delete-all                        - Delete ALL trial links")
     print("  stats                             - Show usage statistics")
     print("  help                              - Show this help message")
     print()
@@ -185,6 +208,7 @@ def show_help():
     print("  python manage_trial_links.py delete abc123-def456-ghi789")
     print("  python manage_trial_links.py delete-expired")
     print("  python manage_trial_links.py delete-unused")
+    print("  python manage_trial_links.py delete-all")
     print("  python manage_trial_links.py stats")
 
 if __name__ == "__main__":
@@ -254,6 +278,9 @@ if __name__ == "__main__":
     
     elif command == "delete-unused":
         delete_unused_links()
+    
+    elif command == "delete-all":
+        delete_all_links()
     
     elif command == "stats":
         usage_stats()

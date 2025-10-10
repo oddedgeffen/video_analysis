@@ -87,23 +87,18 @@ const RecordVideo = () => {
       return code;
     }
 
-    // Check if we're on the regular /upload route (no trial code expected)
+    // If we're on a trial route but no code is provided, this is an error
+    if (window.location.pathname.startsWith('/trial/')) {
+      return null; // This will trigger an error
+    }
+
+    // For root and upload paths, no trial code should be available
+    // These routes are now protected and should only be accessible by admins
     if (window.location.pathname === '/upload' || window.location.pathname === '/') {
-      if (process.env.NODE_ENV === 'development') {
-        // Development mode on /upload - bypass trial validation
-        return null; // This will trigger the bypass logic below
-      } else {
-        // Production mode on /upload - this shouldn't happen, but handle gracefully
-        return null;
-      }
+      return null; // This will trigger an error for non-admin users
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      // Development mode without code - use test code or bypass
-      return 'dev-test-code'; // You can change this to a real test code or null to bypass
-    }
-
-    // Production without code - invalid
+    // No other paths should reach here without a code
     return null;
   }, [code, shouldBypassTrials]);
 
@@ -123,28 +118,10 @@ const RecordVideo = () => {
     const effectiveCode = getEffectiveTrialCode();
 
     if (!effectiveCode) {
-      // Check if we're on the regular /upload route
-      if (window.location.pathname === '/upload' || window.location.pathname === '/') {
-        // Regular upload route - bypass trial validation entirely
-        setTrialValid(true);
-        setTrialInfo({ valid: true, videos_remaining: 999, max_videos: 999 });
-        setTrialError(null);
-      } else if (process.env.NODE_ENV === 'development') {
-        // Development mode - bypass trial validation
-        setTrialValid(true);
-        setTrialInfo({ valid: true, videos_remaining: 999, max_videos: 999 });
-        setTrialError(null);
-      } else {
-        // Production mode without trial code - show error
-        setTrialError('Invalid trial link');
-        setTrialValid(false);
-        setTrialInfo(null);
-      }
-    } else if (effectiveCode === 'dev-test-code') {
-      // Development test code - bypass validation
-      setTrialValid(true);
-      setTrialInfo({ valid: true, videos_remaining: 999, max_videos: 999 });
-      setTrialError(null);
+      // No trial code available - show error
+      setTrialError('Invalid trial link');
+      setTrialValid(false);
+      setTrialInfo(null);
     } else {
       // Validate the real trial code
       validateTrialCode(effectiveCode);
@@ -521,15 +498,6 @@ const RecordVideo = () => {
           gap: 3
         }}
       >
-        {/* Admin Status */}
-        {isAdminUser && (
-          <Alert severity="info" sx={{ width: '100%' }}>
-            <Typography variant="body2">
-              <strong>Admin Access:</strong> You have unlimited video analysis access.
-            </Typography>
-          </Alert>
-        )}
-
         {/* Trial Status (only for non-admin users) */}
         {!isAdminUser && trialValid === false && trialError && (
           <Alert severity="error" sx={{ width: '100%' }}>
@@ -549,6 +517,15 @@ const RecordVideo = () => {
               {trialInfo.expires_at && (
                 <span> Expires: {new Date(trialInfo.expires_at).toLocaleDateString()}</span>
               )}
+            </Typography>
+          </Alert>
+        )}
+
+        {/* Admin trial info (should not show 999 videos) */}
+        {isAdminUser && trialValid === true && trialInfo && (
+          <Alert severity="info" sx={{ width: '100%' }}>
+            <Typography variant="body2">
+              <strong>Admin Access:</strong> You have unlimited video analysis access.
             </Typography>
           </Alert>
         )}
