@@ -47,6 +47,12 @@ function App() {
             <Route path="/trial/:code/record" element={<RecordVideo />} />
             <Route path="/admin" element={<AdminRoute />} />
             <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin/dashboard" element={<LandingPage />} />
+            <Route path="/record" element={
+              <ProtectedRoute>
+                <RecordVideo />
+              </ProtectedRoute>
+            } />
             <Route path="/chat/:videoId" element={<ChatPage />} />
             {/* Catch-all route for invalid URLs - redirect to generic landing page */}
             <Route path="*" element={<GenericLandingPage />} />
