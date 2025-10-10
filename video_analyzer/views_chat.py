@@ -3,6 +3,8 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.conf import settings
+from django.contrib.auth import authenticate, login
+from django.contrib.auth.models import User
 from .models import VideoConversation
 from .views_video import get_video_directory_structure
 from .services.claude_service import ClaudeVideoAnalysisService
@@ -194,6 +196,97 @@ def get_conversation(request, conversation_id):
             'messages': convo.message_history
         })
 
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def check_trial_link(request, code):
+    """
+    Check if a trial link code is valid and return usage information.
+    """
+    try:
+        from .models import TrialLink
+        trial_link = TrialLink.objects.get(code=code)
+        
+        videos_remaining = max(0, trial_link.max_videos - trial_link.videos_used)
+        
+        return Response({
+            'valid': trial_link.can_use(),
+            'videos_remaining': videos_remaining,
+            'max_videos': trial_link.max_videos,
+            'expires_at': trial_link.expires_at.isoformat() if trial_link.expires_at else None
+        })
+        
+    except TrialLink.DoesNotExist:
+        return Response({
+            'error': 'Trial link not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+def admin_login(request):
+    """
+    Admin login endpoint for staff users to bypass trial code requirements.
+    """
+    try:
+        username = request.data.get('username')
+        password = request.data.get('password')
+        
+        if not username or not password:
+            return Response({
+                'error': 'Username and password are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Authenticate user
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None and user.is_staff:
+            # Login the user
+            login(request, user)
+            return Response({
+                'success': True,
+                'message': 'Admin login successful',
+                'user': {
+                    'username': user.username,
+                    'is_staff': user.is_staff,
+                    'is_superuser': user.is_superuser
+                }
+            })
+        elif user is not None and not user.is_staff:
+            return Response({
+                'error': 'Access denied. Admin privileges required.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        else:
+            return Response({
+                'error': 'Invalid username or password'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+            
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def check_admin_auth(request):
+    """
+    Check if the current user is authenticated as an admin.
+    """
+    try:
+        is_admin = (
+            request.user.is_authenticated and 
+            request.user.is_staff
+        )
+        
+        return Response({
+            'is_admin': is_admin,
+            'user': {
+                'username': request.user.username if request.user.is_authenticated else None,
+                'is_staff': request.user.is_staff if request.user.is_authenticated else False,
+                'is_superuser': request.user.is_superuser if request.user.is_authenticated else False
+            } if request.user.is_authenticated else None
+        })
+        
     except Exception as e:
         return Response({
             'error': str(e)

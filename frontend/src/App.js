@@ -1,11 +1,15 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
+import { AuthProvider } from './contexts/AuthContext';
 import RecordVideo from './components/RecordVideo';
 import AdminRoute from './components/AdminRoute';
+import AdminLogin from './components/AdminLogin';
 import LandingPage from './components/LandingPage';
+import GenericLandingPage from './components/GenericLandingPage';
 import ChatPage from './components/ChatPage';
+import ProtectedRoute from './components/ProtectedRoute';
 
 const theme = createTheme({
   palette: {
@@ -26,14 +30,29 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router basename={basename}>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/upload" element={<RecordVideo />} />
-          <Route path="/admin" element={<AdminRoute />} />
-          <Route path="/chat/:videoId" element={<ChatPage />} />
-        </Routes>
-      </Router>
+      <AuthProvider>
+        <Router basename={basename}>
+          <Routes>
+            <Route path="/" element={
+              <ProtectedRoute>
+                <RecordVideo />
+              </ProtectedRoute>
+            } />
+            <Route path="/upload" element={
+              <ProtectedRoute>
+                <RecordVideo />
+              </ProtectedRoute>
+            } />
+            <Route path="/trial/:code" element={<LandingPage />} />
+            <Route path="/trial/:code/record" element={<RecordVideo />} />
+            <Route path="/admin" element={<AdminRoute />} />
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/chat/:videoId" element={<ChatPage />} />
+            {/* Catch-all route for invalid URLs - redirect to generic landing page */}
+            <Route path="*" element={<GenericLandingPage />} />
+          </Routes>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

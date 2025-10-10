@@ -13,7 +13,8 @@ import {
   Stack
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import VideocamIcon from '@mui/icons-material/Videocam';
 import StopIcon from '@mui/icons-material/Stop';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -23,6 +24,8 @@ import { API_BASE_URL } from '../utils/api';
 const RecordVideo = () => {
   const theme = useTheme();
   const navigate = useNavigate();
+  const { code } = useParams(); // Get trial code from URL
+  const { isAdmin, loading: authLoading, checked: authChecked } = useAuth();
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -42,6 +45,88 @@ const RecordVideo = () => {
   const [selectedMic, setSelectedMic] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
   const [cameraInitialized, setCameraInitialized] = useState(false);
+
+  // Admin bypass logic - if user is admin, skip all trial validation
+  const isAdminUser = isAdmin && authChecked;
+  const shouldBypassTrials = isAdminUser;
+
+  // Trial validation logic (only for non-admin users)
+  const [trialValid, setTrialValid] = useState(null);
+  const [trialInfo, setTrialInfo] = useState(null);
+  const [trialError, setTrialError] = useState(null);
+
+  // Trial code validation
+  const validateTrialCode = useCallback(async (trialCode) => {
+    if (shouldBypassTrials) {
+      return true; // Admin bypass
+    }
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/trial/check/${trialCode}/`);
+      setTrialInfo(response.data);
+      setTrialValid(response.data.valid);
+      setTrialError(null);
+      return response.data.valid;
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Failed to validate trial code';
+      setTrialError(errorMessage);
+      setTrialValid(false);
+      setTrialInfo(null);
+      return false;
+    }
+  }, [shouldBypassTrials]);
+
+  // Get effective trial code based on environment and URL
+  const getEffectiveTrialCode = useCallback(() => {
+    if (shouldBypassTrials) {
+      return null; // Admin doesn't need trial codes
+    }
+
+    if (code) {
+      // Code provided in URL - use it regardless of environment
+      return code;
+    }
+
+    // If we're on a trial route but no code is provided, this is an error
+    if (window.location.pathname.startsWith('/trial/')) {
+      return null; // This will trigger an error
+    }
+
+    // For root and upload paths, no trial code should be available
+    // These routes are now protected and should only be accessible by admins
+    if (window.location.pathname === '/upload' || window.location.pathname === '/') {
+      return null; // This will trigger an error for non-admin users
+    }
+
+    // No other paths should reach here without a code
+    return null;
+  }, [code, shouldBypassTrials]);
+
+  // Check trial code validity on mount
+  useEffect(() => {
+    // Wait for auth check to complete
+    if (!authChecked) return;
+
+    if (shouldBypassTrials) {
+      // Admin user - bypass all trial validation
+      setTrialValid(true);
+      setTrialInfo({ valid: true, videos_remaining: 999, max_videos: 999 });
+      setTrialError(null);
+      return;
+    }
+
+    const effectiveCode = getEffectiveTrialCode();
+
+    if (!effectiveCode) {
+      // No trial code available - show error
+      setTrialError('Invalid trial link');
+      setTrialValid(false);
+      setTrialInfo(null);
+    } else {
+      // Validate the real trial code
+      validateTrialCode(effectiveCode);
+    }
+  }, [getEffectiveTrialCode, validateTrialCode, shouldBypassTrials, authChecked]);
 
   // Cleanup function that doesn't depend on state
   const cleanup = useCallback(() => {
@@ -302,7 +387,24 @@ const RecordVideo = () => {
       const formData = new FormData();
       const filename = `video-${Date.now()}.webm`;
       formData.append('video', blob, filename);
-      console.log('Debug: Created FormData with filename:', filename);
+      // Add trial code to form data (skip for admins)
+      if (shouldBypassTrials) {
+        // Admin user - no trial code needed
+        console.log('Debug: Admin user - bypassing trial code');
+      } else {
+        const effectiveCode = getEffectiveTrialCode();
+        if (window.location.pathname === '/upload' || window.location.pathname === '/') {
+          // Regular upload route - skip trial code entirely
+          console.log('Debug: Regular upload route - no trial code needed');
+        } else if (effectiveCode && effectiveCode !== 'dev-test-code') {
+          formData.append('trial_code', effectiveCode);
+          console.log('Debug: Added trial code to form data:', effectiveCode);
+        } else if (process.env.NODE_ENV === 'development') {
+          // In development, you might want to use a real test trial code
+          // For now, we'll skip adding trial_code in development
+          console.log('Debug: Development mode - skipping trial code');
+        }
+      }
 
       // Removed stray debugger that could pause the app in dev tools
 
@@ -396,7 +498,52 @@ const RecordVideo = () => {
           gap: 3
         }}
       >
-        {/* Device Selection */}
+        {/* Trial Status (only for non-admin users) */}
+        {!isAdminUser && trialValid === false && trialError && (
+          <Alert severity="error" sx={{ width: '100%' }}>
+            {trialError}
+            {process.env.NODE_ENV === 'production' && (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Please use a valid trial link to access this service.
+              </Typography>
+            )}
+          </Alert>
+        )}
+
+        {!isAdminUser && trialValid === true && trialInfo && (
+          <Alert severity="success" sx={{ width: '100%' }}>
+            <Typography variant="body2">
+              Trial valid! You have {trialInfo.videos_remaining} of {trialInfo.max_videos} videos remaining.
+              {trialInfo.expires_at && (
+                <span> Expires: {new Date(trialInfo.expires_at).toLocaleDateString()}</span>
+              )}
+            </Typography>
+          </Alert>
+        )}
+
+        {/* Admin trial info (should not show 999 videos) */}
+        {isAdminUser && trialValid === true && trialInfo && (
+          <Alert severity="info" sx={{ width: '100%' }}>
+            <Typography variant="body2">
+              <strong>Admin Access:</strong> You have unlimited video analysis access.
+            </Typography>
+          </Alert>
+        )}
+
+        {!isAdminUser && trialValid === null && !authLoading && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+            <CircularProgress size={20} />
+            <Typography variant="body2">Validating trial code...</Typography>
+          </Box>
+        )}
+
+        {/* Auth Loading */}
+        {authLoading && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+            <CircularProgress size={20} />
+            <Typography variant="body2">Checking authentication...</Typography>
+          </Box>
+        )}
         <Box sx={{ width: '100%' }}>
           <Stack
             direction="row"
@@ -625,7 +772,7 @@ const RecordVideo = () => {
               color={isRecording ? "error" : "primary"}
               startIcon={isRecording ? <StopIcon /> : <VideocamIcon />}
               onClick={isRecording ? stopRecording : startRecording}
-              disabled={!cameraInitialized || uploading}
+              disabled={!cameraInitialized || uploading || (!isAdminUser && trialValid !== true)}
               size="large"
             >
               {isRecording ? "Stop Recording" : "Start Recording"}
@@ -644,6 +791,7 @@ const RecordVideo = () => {
                   variant="contained"
                   color="primary"
                   onClick={handleAnalyzeVideo}
+                  disabled={!isAdminUser && trialValid !== true}
                 >
                   Analyze My Video
                 </Button>

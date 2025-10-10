@@ -1,12 +1,14 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Box, Typography, Button, Container } from '@mui/material';
 
 function LandingPage() {
   const navigate = useNavigate();
+  const { code } = useParams(); // Get trial code from URL
 
   const handleGetStarted = () => {
-    navigate('/upload');
+    // Navigate to the trial record page with the trial code
+    navigate(`/trial/${code}/record`);
   };
 
   return (
@@ -24,8 +26,8 @@ function LandingPage() {
             py: 4
           }}
         >
-          <Typography 
-            variant="h1" 
+          <Typography
+            variant="h1"
             component="h1"
             sx={{
               fontWeight: 700,
@@ -38,9 +40,9 @@ function LandingPage() {
             This is video analysis landing page
           </Typography>
 
-          <Button 
-            variant="contained" 
-            size="large" 
+          <Button
+            variant="contained"
+            size="large"
             onClick={handleGetStarted}
             sx={{
               fontSize: '1.2rem',
