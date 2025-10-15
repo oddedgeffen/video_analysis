@@ -49,8 +49,8 @@ const AdminLogin = () => {
                 // Update auth context
                 login(true, response.data.user);
 
-                // Redirect to main app
-                navigate('/');
+                // Redirect to admin dashboard
+                navigate('/admin/dashboard');
             }
         } catch (err) {
             const errorMessage = err.response?.data?.error || 'Login failed. Please try again.';

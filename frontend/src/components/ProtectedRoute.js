@@ -47,6 +47,43 @@ const ProtectedRoute = ({ children }) => {
         return children; // Chat routes are handled by their own components
     }
 
+    // Check if user is on admin record route
+    if (location.pathname === '/record') {
+        // Only admins can access /record
+        return (
+            <Box sx={{
+                height: '100vh',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: '#f5f5f5',
+                padding: 3
+            }}>
+                <Paper sx={{
+                    padding: 4,
+                    textAlign: 'center',
+                    maxWidth: 500,
+                    boxShadow: 3
+                }}>
+                    <Typography variant="h4" gutterBottom color="error">
+                        Admin Access Required
+                    </Typography>
+                    <Typography variant="body1" paragraph>
+                        This recording page is only accessible to administrators.
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 3 }}>
+                        <Button
+                            variant="outlined"
+                            onClick={() => window.location.href = '/admin/login'}
+                        >
+                            Admin Login
+                        </Button>
+                    </Box>
+                </Paper>
+            </Box>
+        );
+    }
+
     // For root path and upload path, show access denied
     if (location.pathname === '/' || location.pathname === '/upload') {
         return (

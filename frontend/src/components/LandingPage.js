@@ -1,14 +1,25 @@
 import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Box, Typography, Button, Container } from '@mui/material';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { Box, Typography, Button, Container, Chip } from '@mui/material';
+import { useAuth } from '../contexts/AuthContext';
 
 function LandingPage() {
   const navigate = useNavigate();
   const { code } = useParams(); // Get trial code from URL
+  const location = useLocation();
+  const { isAdmin } = useAuth();
+
+  // Check if this is the admin dashboard
+  const isAdminDashboard = location.pathname === '/admin/dashboard';
 
   const handleGetStarted = () => {
-    // Navigate to the trial record page with the trial code
-    navigate(`/trial/${code}/record`);
+    if (isAdminDashboard) {
+      // Navigate to admin recording page
+      navigate('/record');
+    } else {
+      // Navigate to the trial record page with the trial code
+      navigate(`/trial/${code}/record`);
+    }
   };
 
   return (
@@ -26,6 +37,21 @@ function LandingPage() {
             py: 4
           }}
         >
+          {/* Admin badge */}
+          {isAdminDashboard && (
+            <Chip
+              label="Admin Access - Unlimited"
+              color="primary"
+              variant="filled"
+              sx={{
+                fontSize: '1rem',
+                fontWeight: 600,
+                padding: '8px 16px',
+                mb: 2
+              }}
+            />
+          )}
+
           <Typography
             variant="h1"
             component="h1"
