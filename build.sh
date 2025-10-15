@@ -15,9 +15,11 @@ pip install -r requirements.txt
 echo "Collecting static files locally..."
 python manage.py collectstatic --no-input
 
-# Also upload to S3 using our custom command
-echo "Uploading static files to S3..."
-python manage.py s3collectstatic --noinput
+# Upload static files to S3 only if USE_S3 is True
+if [ "$USE_S3" = "True" ]; then
+  echo "Uploading static files to S3..."
+  python manage.py s3collectstatic --noinput
+fi
 
 # Run migrations
 echo "Running database migrations..."
