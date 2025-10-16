@@ -5,8 +5,6 @@ try:
     from .process_voice import process_voice_features
     from .utils_processor import save_debug_transcript, debug_print_text_analysis, print_voice_features
 except:
-    import os
-    print(os.getcwd())
     from video_analyzer.process_text import analyze_text
     from video_analyzer.process_frames import process_video_segments
     from video_analyzer.process_voice import process_voice_features
