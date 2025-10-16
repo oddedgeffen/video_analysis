@@ -106,6 +106,23 @@ def process_video_from_s3(request):
         if not getattr(settings, 'USE_S3', False):
             return Response({'error': 'S3 is not enabled'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Validate and increment trial link usage if provided
+        trial_code = request.data.get('trial_code')
+        if trial_code:
+            try:
+                from .models import TrialLink
+                trial_link = TrialLink.objects.get(code=trial_code)
+                if not trial_link.can_use():
+                    return Response({
+                        'error': 'Trial link expired or video limit reached'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                trial_link.increment_usage()
+                logger.info(f"Trial link {trial_code} usage incremented to {trial_link.videos_used}/{trial_link.max_videos}")
+            except TrialLink.DoesNotExist:
+                return Response({
+                    'error': 'Invalid trial code'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
         s3_key = request.data['key']
         bucket = settings.AWS_STORAGE_BUCKET_NAME
 
@@ -228,6 +245,23 @@ def upload_and_process_video(request):
         return Response({'error': 'No video file provided'}, status=status.HTTP_400_BAD_REQUEST)
 
     video_file = request.FILES['video']
+    
+    # Validate and increment trial link usage if provided
+    trial_code = request.data.get('trial_code')
+    if trial_code:
+        try:
+            from .models import TrialLink
+            trial_link = TrialLink.objects.get(code=trial_code)
+            if not trial_link.can_use():
+                return Response({
+                    'error': 'Trial link expired or video limit reached'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            trial_link.increment_usage()
+            logger.info(f"Trial link {trial_code} usage incremented to {trial_link.videos_used}/{trial_link.max_videos}")
+        except TrialLink.DoesNotExist:
+            return Response({
+                'error': 'Invalid trial code'
+            }, status=status.HTTP_400_BAD_REQUEST)
     
     # Generate a unique filename and detect original extension
     timestamp = datetime.now().strftime('%Y_%m_%d___%H_%M_%S')
