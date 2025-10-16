@@ -16,4 +16,4 @@ tqdm>=4.65.0
 faster-whisper>=1.0.0
 torch>=2.0.0
 torchvision>=0.15.0
-mediapipe>=0.10.0
+mediapipe==0.10.7
