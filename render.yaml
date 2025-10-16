@@ -37,4 +37,3 @@ services:
 databases:
   - name: video-analysis-db
     plan: Basic-1gb
-    storage: 2GB
