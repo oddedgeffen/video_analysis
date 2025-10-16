@@ -14,7 +14,6 @@ ffmpeg-python>=0.2.0  # FFmpeg Python interface
 requests>=2.31.0  # For downloading FFmpeg
 tqdm>=4.65.0  # Progress bars
 faster-whisper==1.2.0  # Speech to text
---index-url https://download.pytorch.org/whl/cu126
-torch==2.8.0+cu126
-torchvision==0.23.0+cu126
+torch>=2.0.0  # CPU version
+torchvision>=0.15.0  # CPU version
 mediapipe==0.10.21
