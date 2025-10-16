@@ -19,3 +19,5 @@ torchvision>=0.15.0
 mediapipe==0.10.13
 imageio-ffmpeg>=0.6.0
 librosa==0.11.0
+anthropic==0.67.0
+praat-parselmouth==0.4.6

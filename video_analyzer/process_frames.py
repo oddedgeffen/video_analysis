@@ -1,10 +1,7 @@
 import json
-from pathlib import Path
 import cv2
 import numpy as np
 import mediapipe as mp
-from PIL import Image
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import torch
 from typing import Dict, List, Union, Tuple
