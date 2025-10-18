@@ -47,5 +47,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('video_analyzer.urls')),
     # Catch-all: serve React app for any non-API/admin/static/media paths (e.g., /trial/:code)
-    re_path(r'^(?!api/|admin/|static/|media/|health/|test/).*$ ', ReactAppView.as_view(), name='frontend_catchall'),
+    re_path(r'^(?!api/|admin/|static/|media/|health/|test/).*$',
+        ReactAppView.as_view(),
+        name='frontend_catchall'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
