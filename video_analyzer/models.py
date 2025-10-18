@@ -4,6 +4,11 @@ from django.conf import settings
 from django.db.models import JSONField
 import uuid
 
+
+def generate_trial_code() -> str:
+    """Serializable default for TrialLink.code"""
+    return str(uuid.uuid4())
+
 class ChatConversation(models.Model):
     video = models.ForeignKey('ProcessedVideo', on_delete=models.CASCADE, related_name='conversations')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -83,7 +88,7 @@ class VideoConversation(models.Model):
 
 class TrialLink(models.Model):
     """Model for managing trial access links"""
-    code = models.CharField(max_length=36, unique=True, default=lambda: str(uuid.uuid4()))
+    code = models.CharField(max_length=36, unique=True, default=generate_trial_code)
     max_videos = models.IntegerField(default=5)
     videos_used = models.IntegerField(default=0)
     expires_at = models.DateTimeField()
