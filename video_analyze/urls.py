@@ -15,7 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponse, HttpResponseRedirect
@@ -46,4 +46,6 @@ urlpatterns = [
     path('test/', ReactAppView.as_view(template_name='test.html'), name='test'),
     path('admin/', admin.site.urls),
     path('api/', include('video_analyzer.urls')),
+    # Catch-all: serve React app for any non-API/admin/static/media paths (e.g., /trial/:code)
+    re_path(r'^(?!api/|admin/|static/|media/|health/|test/).*$ ', ReactAppView.as_view(), name='frontend_catchall'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
