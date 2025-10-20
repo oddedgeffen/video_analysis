@@ -160,9 +160,11 @@ def _process_video_async(paths: dict, timestamp: str) -> None:
         # Ensure base directory exists
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
 
-        # Write results file locally only
-        with open(paths['results_file'], 'w', encoding='utf-8') as f:
+        # Write results file locally only (atomically to avoid partial reads)
+        tmp_results_path = paths['results_file'].with_suffix('.json.tmp')
+        with open(tmp_results_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_results_path, paths['results_file'])
 
         # Create DB record referencing the results file
         try:
@@ -185,8 +187,10 @@ def _process_video_async(paths: dict, timestamp: str) -> None:
         # Write an error status file so the poller can surface failure
         error_payload = {"status": "error", "error": str(e)}
         try:
-            with open(paths['results_file'], 'w', encoding='utf-8') as f:
+            tmp_results_path = paths['results_file'].with_suffix('.json.tmp')
+            with open(tmp_results_path, 'w', encoding='utf-8') as f:
                 json.dump(error_payload, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_results_path, paths['results_file'])
         except Exception as write_err:
             logger.error(f"Failed writing error results file: {write_err}")
 
@@ -331,8 +335,19 @@ def video_status(request, video_id):
         
         # Check if results are ready (local file only)
         if paths['results_file'].exists():
-            with open(paths['results_file'], 'r', encoding='utf-8') as f:
-                results = json.load(f)
+            try:
+                with open(paths['results_file'], 'r', encoding='utf-8') as f:
+                    results = json.load(f)
+            except Exception:
+                # If file is being written or partially written, treat as still processing
+                return Response({
+                    'status': 'processing',
+                    'base_dir': str(paths['base_dir']),
+                    'progress': {
+                        'video_uploaded': paths['original_video'].exists(),
+                        'audio_extracted': paths['audio_file'].exists(),
+                    }
+                })
 
             # If the background job reported an error
             if isinstance(results, dict) and results.get('status') == 'error':
