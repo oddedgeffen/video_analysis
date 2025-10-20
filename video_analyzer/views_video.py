@@ -381,12 +381,29 @@ def video_status(request, video_id):
     try:
         # Get paths for this video
         paths = get_video_directory_structure(video_id)
+        results = None
         
-        # Check if results are ready
+        # First try to load results from local file
         if paths['results_file'].exists():
-            with open(paths['results_file'], 'r', encoding='utf-8') as f:
-                results = json.load(f)
-
+            try:
+                with open(paths['results_file'], 'r', encoding='utf-8') as f:
+                    results = json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to read local results file: {e}")
+        
+        # If local file doesn't exist and S3 is enabled, try S3
+        if results is None and getattr(settings, 'USE_S3', False):
+            try:
+                s3_results_key = f"uploads/videos/{video_id}/results.json"
+                if default_storage.exists(s3_results_key):
+                    logger.info(f"Loading results from S3: {s3_results_key}")
+                    with default_storage.open(s3_results_key, 'r') as f:
+                        results = json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to read results from S3: {e}")
+        
+        # If we have results, process them
+        if results:
             # If the background job reported an error
             if isinstance(results, dict) and results.get('status') == 'error':
                 return Response({
@@ -406,27 +423,60 @@ def video_status(request, video_id):
                 'base_dir': str(paths['base_dir']),
                 'results': results
             })
-        else:
-            # Check processing status
-            if paths['base_dir'].exists():
-                # Directory exists; treat as processing regardless of file write race
-                status_info = {
-                    'status': 'processing',
-                    'base_dir': str(paths['base_dir']),
-                    'progress': {
-                        'video_uploaded': paths['original_video'].exists(),
-                        'audio_extracted': paths['audio_file'].exists(),
-                    }
+        
+        # No results yet - check if we're processing
+        # In S3 mode, check if the original video exists in S3
+        if getattr(settings, 'USE_S3', False):
+            try:
+                s3_video_key = f"uploads/videos/{video_id}/original.webm"
+                # Try common video extensions
+                video_exists = False
+                for ext in ['.webm', '.mp4', '.mov', '.avi']:
+                    test_key = f"uploads/videos/{video_id}/original{ext}"
+                    if default_storage.exists(test_key):
+                        video_exists = True
+                        logger.info(f"Found video in S3: {test_key}")
+                        break
+                
+                if video_exists:
+                    return Response({
+                        'status': 'processing',
+                        'base_dir': str(paths['base_dir']),
+                        'progress': {
+                            'video_uploaded': True,
+                            'audio_extracted': False,
+                        }
+                    })
+                else:
+                    logger.warning(f"Video not found in S3 for video_id: {video_id}")
+                    return Response({
+                        'status': 'not_found',
+                        'error': 'Video not found'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            except Exception as e:
+                logger.error(f"Error checking S3 for video: {e}")
+                # Fall through to check local directory
+        
+        # Check local processing status
+        if paths['base_dir'].exists():
+            # Directory exists; treat as processing
+            status_info = {
+                'status': 'processing',
+                'base_dir': str(paths['base_dir']),
+                'progress': {
+                    'video_uploaded': paths['original_video'].exists(),
+                    'audio_extracted': paths['audio_file'].exists(),
                 }
-                return Response(status_info)
-            else:
-                return Response({
-                    'status': 'not_found',
-                    'error': 'Video not found'
-                }, status=status.HTTP_404_NOT_FOUND)
+            }
+            return Response(status_info)
+        else:
+            return Response({
+                'status': 'not_found',
+                'error': 'Video not found'
+            }, status=status.HTTP_404_NOT_FOUND)
 
     except Exception as e:
-        logger.error(f"Error checking video status: {str(e)}")
+        logger.error(f"Error checking video status for {video_id}: {str(e)}", exc_info=True)
         return Response({
             'status': 'error',
             'error': str(e)
