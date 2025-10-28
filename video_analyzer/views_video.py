@@ -262,7 +262,8 @@ def upload_and_process_video(request):
     
     try:
         # Create directory structure for this video
-        paths = get_video_directory_structure(filename_no_ext, original_ext)
+        # paths = get_video_directory_structure(filename_no_ext, original_ext)
+        # paths = get_video_directory_structure(filename_no_ext, original_ext)
         # paths['base_dir'].mkdir(parents=True, exist_ok=True)
         
         # Save the uploaded file via Django's storage backend
@@ -277,10 +278,10 @@ def upload_and_process_video(request):
 
         # Ensure a local copy exists for processing pipeline
         # Download from storage to local processing directory
-        paths = get_video_directory_structure(filename_no_ext)
+        paths = get_video_directory_structure(filename_no_ext, original_ext)
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
         # Update original_video path to use the correct extension
-        paths['original_video'] = paths['base_dir'] / f"original{original_ext}"
+        # paths['original_video'] = paths['base_dir'] / f"original{original_ext}"
         with default_storage.open(saved_name, 'rb') as src, open(paths['original_video'], 'wb') as dst:
             while True:
                 chunk = src.read(1024 * 1024)

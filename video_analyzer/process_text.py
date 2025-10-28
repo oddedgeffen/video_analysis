@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 import imageio_ffmpeg as im_ffmpeg
 import librosa
+import logging
+logger = logging.getLogger(__name__)
 
 def extract_audio(video_path: str, audio_path: str = "temp_audio.wav") -> str:
     """
@@ -78,12 +80,12 @@ def transcribe_audio(
     """
     # Check if CUDA (GPU) is available
     
-    device = "cuda"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     compute_type = "float16"
-    
+    logger.info(f"Using device: {device}")
     print(f"Using device: {device}")
     if device == "cuda":
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
     
     # Load model
     # Configure environment for OpenMP

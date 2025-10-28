@@ -10,21 +10,27 @@ except:
     from video_analyzer.process_voice import process_voice_features
     from video_analyzer.utils_processor import save_debug_transcript, debug_print_text_analysis, print_voice_features
 
+import logging
+logger = logging.getLogger(__name__)
+
 DEBUG = False
 
 def process_video_file(paths):
     """Main function to process a video file"""
 
-    ############## process text    
+    ############## process text
+    logger.info("Processing text...")
     text_transcript = analyze_text(video_path=paths['original_video'], dst_audio_path=paths['audio_file'], model_size="base", language='en', cleanup=True)    
     save_debug_transcript(text_transcript, 'text_transcript', paths, dbg_local=DEBUG)
     debug_print_text_analysis(text_transcript, dbg_local=DEBUG)
 
     ############## process frames
+    logger.info("Processing frames...")
     images_text_transcript = process_video_segments(text_transcript, paths['original_video'])
     save_debug_transcript(images_text_transcript, 'images_text_transcript', paths, dbg_local=DEBUG)
 
     ############## process voice
+    logger.info("Processing voice...")
     voice_images_text_transcript = process_voice_features(images_text_transcript, paths['audio_file'])
     final_transcript = voice_images_text_transcript
     save_debug_transcript(final_transcript, 'final_transcript', paths, dbg_local=DEBUG)
