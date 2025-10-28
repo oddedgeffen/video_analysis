@@ -79,28 +79,33 @@ def transcribe_audio(
         Tuple of (list of segments, full transcript)
     """
     # Check if CUDA (GPU) is available
-    
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    compute_type = "float16"
-    logger.info(f"Using device: {device}")
-    print(f"Using device: {device}")
+    
+    # Set compute type based on device
     if device == "cuda":
+        compute_type = "float32"  # Most stable for GTX 1050
+        logger.info(f"Using device: {device}")
         logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        compute_type = "int8"  # More memory efficient for CPU
+        logger.info(f"Using device: {device} with int8 quantization")
+    
+    print(f"Using device: {device}")
     
     # Load model
     # Configure environment for OpenMP
-    
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
-
-    # Initialize model with stable settings for GTX 1050
+    # Initialize model with appropriate settings based on detected device
     model = WhisperModel(
         "base",
-        device="cuda",          # Use GPU
-        compute_type="float32", # Most stable for GTX 1050
+        device=device,          # Use detected device (GPU or CPU)
+        compute_type=compute_type,
         cpu_threads=4,         # Limit CPU threads
         num_workers=1          # Reduce worker threads
     )
+    
+    logger.info(f"Whisper model loaded successfully (base on {device})")
 
       
     # Transcribe with GPU monitoring

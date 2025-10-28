@@ -18,6 +18,7 @@ DEBUG = False
 def process_video_file(paths):
     """Main function to process a video file"""
 
+    logger.info(f"Processing video file: {paths['original_video']}")
     ############## process text
     logger.info("Processing text...")
     text_transcript = analyze_text(video_path=paths['original_video'], dst_audio_path=paths['audio_file'], model_size="base", language='en', cleanup=True)    

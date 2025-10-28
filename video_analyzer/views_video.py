@@ -278,6 +278,7 @@ def upload_and_process_video(request):
 
         # Ensure a local copy exists for processing pipeline
         # Download from storage to local processing directory
+        logger.info(f"Preparing local copy for processing from '{saved_name}'")
         paths = get_video_directory_structure(filename_no_ext, original_ext)
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
         # Update original_video path to use the correct extension
