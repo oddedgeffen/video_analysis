@@ -207,8 +207,8 @@ def analyze_text(
     
     
     # Log completion
-    print("\nTranscription completed successfully!")
-    print(f"Number of segments: {len(result['segments'])}")
+    logger.info("\nTranscription completed successfully!")
+    logger.info(f"Number of segments: {len(result['segments'])}")
     
     return result
 

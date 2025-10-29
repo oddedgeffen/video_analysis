@@ -7,6 +7,8 @@ import torch
 import parselmouth
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+import logging
+logger = logging.getLogger(__name__)
 
 class VoiceAnalyzer:
     """Analyzes voice features from audio segments"""
@@ -35,6 +37,7 @@ class VoiceAnalyzer:
         self.load_vad_model()
 
     def load_vad_model(self):
+        logger.info(f"Loading Silero VAD model")
         model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
                                     model='silero_vad',
                                     force_reload=False  ,
@@ -431,14 +434,17 @@ def extract_audio_features(audio_path: str, segments: List[Dict]) -> Dict:
 
 def process_voice_features(images_text_transcript, audio_path):    
     # Extract voice features
+    logger.info(f"Extracting voice features from audio file: {audio_path}")
     voice_features = extract_audio_features(audio_path=audio_path,
                             segments=images_text_transcript['segments'])
-    
     # Add voice features to existing enriched transcript
+    logger.info(f"Voice features extracted successfully")
+
     for segment, voice_segment in zip(images_text_transcript['segments'], voice_features['segments']):
         segment['voice_features'] = voice_segment['audio_features']
          
     # Add global audio info
+    logger.info(f"Adding global audio info")
     images_text_transcript['audio_metadata'] = voice_features['global_audio']
     return images_text_transcript
 
