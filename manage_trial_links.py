@@ -61,7 +61,9 @@ def check_trial_link(code):
         print(f"Created At: {link.created_at}")
         print(f"Active: {link.is_active}")
         print(f"Can Use: {link.can_use()}")
-        print(f"Full URL: http://localhost:3000/trial/{link.code}")
+        print(f"\nURLs:")
+        print(f"  Local:  http://localhost:3000/trial/{link.code}")
+        print(f"  Render: https://video-analysis-saas.onrender.com/trial/{link.code}")
         
     except TrialLink.DoesNotExist:
         print(f"Trial link with code '{code}' not found.")
@@ -200,16 +202,18 @@ def show_help():
     print("  help                              - Show this help message")
     print()
     print("Examples:")
-    print("  python manage_trial_links.py create 10")
-    print("  python manage_trial_links.py create 5 7")
-    print("  python manage_trial_links.py list")
-    print("  python manage_trial_links.py check abc123-def456-ghi789")
-    print("  python manage_trial_links.py deactivate abc123-def456-ghi789")
-    print("  python manage_trial_links.py delete abc123-def456-ghi789")
-    print("  python manage_trial_links.py delete-expired")
-    print("  python manage_trial_links.py delete-unused")
-    print("  python manage_trial_links.py delete-all")
-    print("  python manage_trial_links.py stats")
+    print("  python manage_trial_links.py create 10              # 10 videos, expires in 30 days")
+    print("  python manage_trial_links.py create 5 7             # 5 videos, expires in 7 days")
+    print("  python manage_trial_links.py list                   # List all trial links")
+    print("  python manage_trial_links.py check abc123...        # Check specific link status")
+    print("  python manage_trial_links.py deactivate abc123...   # Deactivate a link")
+    print("  python manage_trial_links.py delete abc123...       # Delete a link")
+    print("  python manage_trial_links.py delete-expired         # Delete all expired links")
+    print("  python manage_trial_links.py delete-unused          # Delete unused links")
+    print("  python manage_trial_links.py delete-all             # Delete ALL links")
+    print("  python manage_trial_links.py stats                  # Show statistics")
+    print()
+    print("Note: Created links will show both localhost and Render production URLs.")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -237,7 +241,9 @@ if __name__ == "__main__":
             print(f"Code: {link.code}")
             print(f"Max Videos: {link.max_videos}")
             print(f"Expires: {link.expires_at}")
-            print(f"URL: http://localhost:3000/trial/{link.code}")
+            print(f"\nURLs:")
+            print(f"  Local:  http://localhost:3000/trial/{link.code}")
+            print(f"  Render: https://video-analysis-saas.onrender.com/trial/{link.code}")
             
         except ValueError:
             print("Error: Please provide valid numbers")
