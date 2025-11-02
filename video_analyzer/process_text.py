@@ -9,6 +9,8 @@ import subprocess
 from pathlib import Path
 import imageio_ffmpeg as im_ffmpeg
 import librosa
+import logging
+logger = logging.getLogger(__name__)
 
 def extract_audio(video_path: str, audio_path: str = "temp_audio.wav") -> str:
     """
@@ -77,28 +79,33 @@ def transcribe_audio(
         Tuple of (list of segments, full transcript)
     """
     # Check if CUDA (GPU) is available
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    device = "cuda"
-    compute_type = "float16"
+    # Set compute type based on device
+    if device == "cuda":
+        compute_type = "float32"  # Most stable for GTX 1050
+        logger.info(f"Using device: {device}")
+        logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        compute_type = "int8"  # More memory efficient for CPU
+        logger.info(f"Using device: {device} with int8 quantization")
     
     print(f"Using device: {device}")
-    if device == "cuda":
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
     
     # Load model
     # Configure environment for OpenMP
-    
     os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
-
-    # Initialize model with stable settings for GTX 1050
+    # Initialize model with appropriate settings based on detected device
     model = WhisperModel(
         "base",
-        device="cuda",          # Use GPU
-        compute_type="float32", # Most stable for GTX 1050
+        device=device,          # Use detected device (GPU or CPU)
+        compute_type=compute_type,
         cpu_threads=4,         # Limit CPU threads
         num_workers=1          # Reduce worker threads
     )
+    
+    logger.info(f"Whisper model loaded successfully (base on {device})")
 
       
     # Transcribe with GPU monitoring
@@ -200,8 +207,8 @@ def analyze_text(
     
     
     # Log completion
-    print("\nTranscription completed successfully!")
-    print(f"Number of segments: {len(result['segments'])}")
+    logger.info("\nTranscription completed successfully!")
+    logger.info(f"Number of segments: {len(result['segments'])}")
     
     return result
 

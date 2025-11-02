@@ -160,22 +160,11 @@ def _process_video_async(paths: dict, timestamp: str) -> None:
         # Ensure base directory exists
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
 
-        # Write canonical results file for polling endpoint (local)
-        with open(paths['results_file'], 'w', encoding='utf-8') as f:
+        # Write results file locally only (atomically to avoid partial reads)
+        tmp_results_path = paths['results_file'].with_suffix('.json.tmp')
+        with open(tmp_results_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
-
-        # Also upload results.json to S3 when enabled to keep remote artifacts in sync
-        if getattr(settings, 'USE_S3', False):
-            try:
-                video_id = paths['base_dir'].name
-                s3_results_key = f"uploads/videos/{video_id}/results.json"
-                from django.core.files.base import ContentFile
-                from django.core.files.storage import default_storage
-                payload = json.dumps(results, ensure_ascii=False, indent=2).encode('utf-8')
-                saved_key = default_storage.save(s3_results_key, ContentFile(payload))
-                logger.info(f"Uploaded results.json to S3 at '{saved_key}'")
-            except Exception as e:
-                logger.error(f"Failed to upload results.json to S3: {e}")
+        os.replace(tmp_results_path, paths['results_file'])
 
         # Create DB record referencing the results file
         try:
@@ -198,8 +187,10 @@ def _process_video_async(paths: dict, timestamp: str) -> None:
         # Write an error status file so the poller can surface failure
         error_payload = {"status": "error", "error": str(e)}
         try:
-            with open(paths['results_file'], 'w', encoding='utf-8') as f:
+            tmp_results_path = paths['results_file'].with_suffix('.json.tmp')
+            with open(tmp_results_path, 'w', encoding='utf-8') as f:
                 json.dump(error_payload, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_results_path, paths['results_file'])
         except Exception as write_err:
             logger.error(f"Failed writing error results file: {write_err}")
 
@@ -271,7 +262,8 @@ def upload_and_process_video(request):
     
     try:
         # Create directory structure for this video
-        paths = get_video_directory_structure(filename_no_ext, original_ext)
+        # paths = get_video_directory_structure(filename_no_ext, original_ext)
+        # paths = get_video_directory_structure(filename_no_ext, original_ext)
         # paths['base_dir'].mkdir(parents=True, exist_ok=True)
         
         # Save the uploaded file via Django's storage backend
@@ -286,10 +278,11 @@ def upload_and_process_video(request):
 
         # Ensure a local copy exists for processing pipeline
         # Download from storage to local processing directory
-        paths = get_video_directory_structure(filename_no_ext)
+        logger.info(f"Preparing local copy for processing from '{saved_name}'")
+        paths = get_video_directory_structure(filename_no_ext, original_ext)
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
         # Update original_video path to use the correct extension
-        paths['original_video'] = paths['base_dir'] / f"original{original_ext}"
+        # paths['original_video'] = paths['base_dir'] / f"original{original_ext}"
         with default_storage.open(saved_name, 'rb') as src, open(paths['original_video'], 'wb') as dst:
             while True:
                 chunk = src.read(1024 * 1024)
@@ -332,60 +325,31 @@ def video_status(request, video_id):
     4. Continues polling until status is 'completed' or 'error'
     5. Displays results or error message to user
     
-    Example Frontend Code:
-    ```javascript
-    // After upload succeeds
-    const checkStatus = async (videoId) => {
-      const response = await fetch(`/api/video-status/${videoId}/`);
-      const data = await response.json();
-      
-      if (data.status === 'completed') {
-        // Show results
-        displayResults(data.results);
-      } else if (data.status === 'processing') {
-        // Check again in 2 seconds
-        setTimeout(() => checkStatus(videoId), 2000);
-      } else if (data.status === 'error') {
-        // Show error
-        displayError(data.error);
-      }
-    };
-    ```
-    
     Response States:
     1. not_found (404): Video ID doesn't exist
-       {
-         "status": "not_found",
-         "error": "Video processing directory not found"
-       }
-    
     2. processing (200): Video is being processed
-       {
-         "status": "processing",
-         "processing_dir": "/path/to/processing/dir"
-       }
-    
     3. completed (200): Processing finished successfully
-       {
-         "status": "completed",
-         "processing_dir": "/path/to/processing/dir",
-         "results": { ... processing results ... }
-       }
-    
     4. error (500): Processing failed
-       {
-         "status": "error",
-         "error": "Error details..."
-       }
     """
     try:
         # Get paths for this video
         paths = get_video_directory_structure(video_id)
         
-        # Check if results are ready
+        # Check if results are ready (local file only)
         if paths['results_file'].exists():
-            with open(paths['results_file'], 'r', encoding='utf-8') as f:
-                results = json.load(f)
+            try:
+                with open(paths['results_file'], 'r', encoding='utf-8') as f:
+                    results = json.load(f)
+            except Exception:
+                # If file is being written or partially written, treat as still processing
+                return Response({
+                    'status': 'processing',
+                    'base_dir': str(paths['base_dir']),
+                    'progress': {
+                        'video_uploaded': paths['original_video'].exists(),
+                        'audio_extracted': paths['audio_file'].exists(),
+                    }
+                })
 
             # If the background job reported an error
             if isinstance(results, dict) and results.get('status') == 'error':
@@ -409,7 +373,7 @@ def video_status(request, video_id):
         else:
             # Check processing status
             if paths['base_dir'].exists():
-                # Directory exists; treat as processing regardless of file write race
+                # Directory exists; treat as processing
                 status_info = {
                     'status': 'processing',
                     'base_dir': str(paths['base_dir']),
@@ -426,7 +390,7 @@ def video_status(request, video_id):
                 }, status=status.HTTP_404_NOT_FOUND)
 
     except Exception as e:
-        logger.error(f"Error checking video status: {str(e)}")
+        logger.error(f"Error checking video status: {str(e)}", exc_info=True)
         return Response({
             'status': 'error',
             'error': str(e)

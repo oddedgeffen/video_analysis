@@ -30,7 +30,13 @@ if __name__ == "__main__":
             sys.exit(1)
         
         link = create_trial_link(num_videos)
-        print(f"http://localhost:3000/trial/{link.code}")
+        print(f"Trial link created successfully!")
+        print(f"Code: {link.code}")
+        print(f"Max Videos: {link.max_videos}")
+        print(f"Expires: {link.expires_at}")
+        print(f"\nURLs:")
+        print(f"  Local:  http://localhost:3000/trial/{link.code}")
+        print(f"  Render: https://video-analysis-saas.onrender.com/trial/{link.code}")
         
     except ValueError:
         print("Error: Please provide a valid number")

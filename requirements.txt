@@ -16,8 +16,10 @@ tqdm>=4.65.0
 faster-whisper>=1.0.0
 torch>=2.0.0
 torchvision>=0.15.0
+torchaudio>=2.0.0
 mediapipe==0.10.13
 imageio-ffmpeg>=0.6.0
 librosa==0.11.0
 anthropic==0.67.0
 praat-parselmouth==0.4.6
+psutil>=5.9.0
