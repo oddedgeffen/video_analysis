@@ -5,7 +5,8 @@ from django.conf import settings
 class ClaudeVideoAnalysisService:
     def __init__(self):
         self.client = anthropic.Anthropic(api_key=settings.CLAUDE_API_KEY)
-        self.model = "claude-sonnet-4-20250514"
+        # self.model = "claude-sonnet-4-20250514"   # sonnet 4
+        self.model = "claude-sonnet-4-5-20250929"   # sonnet 4.5
         self.question_limit = 10
     
     def build_system_prompt(self, transcript_data, guidelines):
