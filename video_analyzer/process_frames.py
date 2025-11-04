@@ -159,19 +159,18 @@ class FaceMetrics:
         self.prev_landmarks = current_landmarks
         return metrics
 
-def extract_face_features(image: np.ndarray, metrics: FaceMetrics = None) -> Dict:
+def extract_face_features(image: np.ndarray, face_mesh, metrics: FaceMetrics = None) -> Dict:
     """
     Extract comprehensive face features using MediaPipe Face Mesh.
     
     Args:
         image: RGB image as numpy array
+        face_mesh: Initialized MediaPipe FaceMesh instance (reused across frames)
         metrics: FaceMetrics instance for temporal measurements
         
     Returns:
         Dictionary with extensive facial features and measurements
     """
-    face_mesh = initialize_face_mesh()
-
     h, w = image.shape[:2]
     results = face_mesh.process(image)
     
@@ -433,6 +432,9 @@ def process_video_segments(text_transcript: dict, video_path: str, frame_interva
     frame_width = text_transcript['video_metadata']['frame_width']
     frame_height = text_transcript['video_metadata']['frame_height']
     
+    # Initialize face mesh ONCE for all frames (major performance optimization)
+    face_mesh = initialize_face_mesh()
+    
     # Initialize metrics calculator
     metrics = FaceMetrics(frame_width, frame_height, video_fps)
     processed_segments = []
@@ -452,7 +454,7 @@ def process_video_segments(text_transcript: dict, video_path: str, frame_interva
         if frames:   
             # Process all frames for face features
             for frame_time, frame in frames:
-                face_features = extract_face_features(frame, metrics)
+                face_features = extract_face_features(frame, face_mesh, metrics)
                 frame_info = {
                     "frame_time": float(frame_time),
                     "face_features": face_features
