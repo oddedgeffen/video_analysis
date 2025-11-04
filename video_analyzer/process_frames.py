@@ -8,15 +8,16 @@ from typing import Dict, List, Union, Tuple
 
 
 # Constants for feature calculations
-GAZE_ANGLE_THRESH = 12   # Degrees threshold for eye contact
+# GAZE_ANGLE_THRESH = 12   # Degrees threshold for eye contact (skipped for now)
 BROW_RAISE_THRESH = 0.15 # Threshold for significant brow raise
 HEAD_MOTION_THRESH = 0.1 # Threshold for head motion detection
 
-# MediaPipe Face Mesh landmark indices (0-467 available)
+# MediaPipe Face Mesh landmark indices (0-467 available, 468-477 for iris with refine_landmarks=True)
 FACE_LANDMARKS = {
     "eyes": {
         "left": {
             "center": [33, 133],  # Left eye center points
+            "iris": [468, 469, 470, 471],  # Left iris landmarks
             "top": 159,           # Upper eyelid
             "bottom": 145,        # Lower eyelid
             "outer": 33,          # Outer corner
@@ -25,6 +26,7 @@ FACE_LANDMARKS = {
         },
         "right": {
             "center": [362, 263], # Right eye center points
+            "iris": [473, 474, 475, 476],  # Right iris landmarks
             "top": 386,           # Upper eyelid
             "bottom": 374,        # Lower eyelid
             "outer": 362,         # Outer corner
@@ -85,9 +87,10 @@ def initialize_face_mesh():
     mp_face_mesh = mp.solutions.face_mesh
 
     face_mesh = mp_face_mesh.FaceMesh(
-        static_image_mode=True,
+        static_image_mode=False,
         max_num_faces=1,
-        min_detection_confidence=0.5
+        min_detection_confidence=0.5,
+        refine_landmarks=True  # Enable iris landmarks
     )
     return face_mesh
 
@@ -108,10 +111,10 @@ class FaceMetrics:
         }
     
 
-    def calculate_gaze_direction(self, eye_center, pupil):
-        """Calculate gaze direction in degrees"""
-        dx = pupil.x - eye_center.x
-        dy = pupil.y - eye_center.y
+    def calculate_gaze_direction(self, iris_center, eye_center):
+        """Calculate gaze direction in degrees using iris position"""
+        dx = iris_center[0] - eye_center[0]
+        dy = iris_center[1] - eye_center[1]
         yaw = np.degrees(np.arctan2(dx, 1))
         pitch = np.degrees(np.arctan2(dy, 1))
         return yaw, pitch
@@ -178,14 +181,12 @@ def extract_face_features(image: np.ndarray, metrics: FaceMetrics = None) -> Dic
             "left": {
                 "width_height_ratio": 0.0,
                 "iris_position": {"x": 0.0, "y": 0.0},
-                "gaze": {"yaw": 0.0, "pitch": 0.0},
-                "eye_contact": False
+                "gaze": {"yaw": 0.0, "pitch": 0.0}
             },
             "right": {
                 "width_height_ratio": 0.0,
                 "iris_position": {"x": 0.0, "y": 0.0},
-                "gaze": {"yaw": 0.0, "pitch": 0.0},
-                "eye_contact": False
+                "gaze": {"yaw": 0.0, "pitch": 0.0}
             },
             "saccade_rate": 0.0
         },
@@ -249,27 +250,27 @@ def extract_face_features(image: np.ndarray, metrics: FaceMetrics = None) -> Dic
         height = abs(eye_top.y - eye_bottom.y)
         width_height_ratio = width / height if height > 0 else 0
         
-        # Calculate eye center
+        # Calculate eye center (mean of the two corner landmarks)
         eye_center = np.mean([[landmarks[i].x, landmarks[i].y] for i in eye_points["center"]], axis=0)
         
-        # Calculate gaze direction
-        gaze_yaw, gaze_pitch = metrics.calculate_gaze_direction(
-            landmarks[eye_points["center"][0]], 
-            landmarks[eye_points["inner"]]  # Using inner corner as proxy for gaze
-        )
+        # Calculate iris center (mean of the 4 iris landmarks)
+        iris_center = np.mean([[landmarks[i].x, landmarks[i].y] for i in eye_points["iris"]], axis=0)
+        
+        # Calculate gaze direction using iris position relative to eye center
+        gaze_yaw, gaze_pitch = metrics.calculate_gaze_direction(iris_center, eye_center)
         
         # Update eye features
         features["eyes"][side].update({
             "width_height_ratio": float(width_height_ratio),
             "iris_position": {
-                "x": float(eye_inner.x - eye_center[0]),
-                "y": float(eye_inner.y - eye_center[1])
+                "x": float(iris_center[0] - eye_center[0]),
+                "y": float(iris_center[1] - eye_center[1])
             },
             "gaze": {
                 "yaw": float(gaze_yaw),
                 "pitch": float(gaze_pitch)
-            },
-            "eye_contact": abs(gaze_yaw) < GAZE_ANGLE_THRESH and abs(gaze_pitch) < GAZE_ANGLE_THRESH
+            }
+            # eye_contact feature skipped for now
         })
     
     # Process eyebrows

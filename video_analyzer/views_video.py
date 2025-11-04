@@ -16,6 +16,7 @@ from .video_processor import process_video_file
 from .models import ProcessedVideo
 import threading
 import boto3
+from .utils_clean import _delete_processing_folder, _delete_s3_assets_for_video
 
 logger = logging.getLogger(__name__)
 
@@ -148,8 +149,10 @@ def process_video_from_s3(request):
         })
     except Exception as e:
         logger.error(f"Error starting processing from S3: {e}")
+        _delete_processing_folder(paths)
+        _delete_s3_assets_for_video(video_id)
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
 
 def _process_video_async(paths: dict, timestamp: str) -> None:
     """Background processing task that generates results.json when done."""
@@ -166,20 +169,6 @@ def _process_video_async(paths: dict, timestamp: str) -> None:
             json.dump(results, f, ensure_ascii=False, indent=2)
         os.replace(tmp_results_path, paths['results_file'])
 
-        # Create DB record referencing the results file
-        try:
-            video = ProcessedVideo.objects.create(
-                video_file=str(paths['original_video']),
-                result_file=str(paths['results_file']),
-                status='completed',
-                duration=results.get('video_metadata', {}).get('duration_seconds'),
-                frame_count=results.get('video_metadata', {}).get('total_frames'),
-                fps=results.get('video_metadata', {}).get('fps'),
-                resolution=f"{results.get('video_metadata', {}).get('frame_width')}x{results.get('video_metadata', {}).get('frame_height')}"
-            )
-            logger.info(f"ProcessedVideo created with id={video.id}")
-        except Exception as db_err:
-            logger.error(f"Failed to create ProcessedVideo: {db_err}")
 
         logger.info('Background processing finished successfully')
     except Exception as e:
@@ -193,6 +182,7 @@ def _process_video_async(paths: dict, timestamp: str) -> None:
             os.replace(tmp_results_path, paths['results_file'])
         except Exception as write_err:
             logger.error(f"Failed writing error results file: {write_err}")
+        
 
 @api_view(['POST'])
 def upload_and_process_video(request):
@@ -261,35 +251,38 @@ def upload_and_process_video(request):
     filename_no_ext = Path(filename).stem
     
     try:
-        # Create directory structure for this video
-        # paths = get_video_directory_structure(filename_no_ext, original_ext)
-        # paths = get_video_directory_structure(filename_no_ext, original_ext)
-        # paths['base_dir'].mkdir(parents=True, exist_ok=True)
-        
-        # Save the uploaded file via Django's storage backend
-        # If USE_S3=True, this writes to S3; otherwise local filesystem
-        storage_rel_path = f"uploads/videos/{filename_no_ext}/original{original_ext}"
-        saved_name = default_storage.save(storage_rel_path, ContentFile(video_file.read()))
-        try:
-            file_url = default_storage.url(saved_name)
-            logger.info(f"Stored uploaded video at '{saved_name}', url='{file_url}'")
-        except Exception:
-            logger.info(f"Stored uploaded video at '{saved_name}'")
-
-        # Ensure a local copy exists for processing pipeline
-        # Download from storage to local processing directory
-        logger.info(f"Preparing local copy for processing from '{saved_name}'")
+        # Get processing paths
         paths = get_video_directory_structure(filename_no_ext, original_ext)
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
-        # Update original_video path to use the correct extension
-        # paths['original_video'] = paths['base_dir'] / f"original{original_ext}"
-        with default_storage.open(saved_name, 'rb') as src, open(paths['original_video'], 'wb') as dst:
-            while True:
-                chunk = src.read(1024 * 1024)
-                if not chunk:
-                    break
-                dst.write(chunk)
-        logger.info(f"Prepared local processing copy at {paths['original_video']}")
+        
+        storage_key = None  # Track storage key for cleanup
+        
+        if getattr(settings, 'USE_S3', False):
+            # Production: Save to S3, then download for processing
+            storage_rel_path = f"uploads/videos/{filename_no_ext}/original{original_ext}"
+            storage_key = default_storage.save(storage_rel_path, ContentFile(video_file.read()))
+            try:
+                file_url = default_storage.url(storage_key)
+                logger.info(f"Stored uploaded video to S3 at '{storage_key}', url='{file_url}'")
+            except Exception:
+                logger.info(f"Stored uploaded video to S3 at '{storage_key}'")
+            
+            # Download from S3 to local processing directory
+            logger.info(f"Downloading from S3 for processing: '{storage_key}'")
+            with default_storage.open(storage_key, 'rb') as src, open(paths['original_video'], 'wb') as dst:
+                while True:
+                    chunk = src.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    dst.write(chunk)
+            logger.info(f"Downloaded to local processing directory: {paths['original_video']}")
+        else:
+            # Local dev: Save directly to processing directory
+            logger.info(f"Saving video directly to local processing directory: {paths['original_video']}")
+            with open(paths['original_video'], 'wb') as dst:
+                for chunk in video_file.chunks():
+                    dst.write(chunk)
+            logger.info(f"Saved video locally at {paths['original_video']}")
         
         # Kick off background processing so the request returns immediately
         threading.Thread(target=_process_video_async, args=(paths, timestamp), daemon=True).start()
