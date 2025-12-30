@@ -44,5 +44,4 @@ while True:
     elif status in ["FAILED", "CANCELLED"]:
         print("\n❌ Job failed:", data)
         break
-
     time.sleep(3)
