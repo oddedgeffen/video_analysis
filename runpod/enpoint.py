@@ -14,6 +14,9 @@ import json
 import time
 import os
 from dotenv import load_dotenv
+import boto3
+from botocore.config import Config
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -21,13 +24,57 @@ API_KEY = os.getenv("API_KEY")
 ENDPOINT_ID = os.getenv("ENDPOINT_ID")
 
 
-def process_frames_local(text_transcript: dict, video_path: str, frame_interval: int = 30) -> dict:
+def convert_to_presigned_url(video_url: str, expiration: int = 7200) -> str:
     """
-    Process video frames LOCALLY using MediaPipe.
-    Use this when you have a GPU locally or for testing.
+    Convert a regular S3 URL to a presigned URL for temporary access.
+    
+    Args:
+        video_url: Regular S3 URL (e.g., https://bucket.s3.region.amazonaws.com/path/to/video.webm)
+        expiration: URL expiration time in seconds (default 2 hours)
+    
+    Returns:
+        Presigned URL that RunPod can access
     """
-    from video_analyzer.process_frames import process_video_segments
-    return process_video_segments(text_transcript, video_path, frame_interval)
+    # Parse the S3 URL to extract bucket and key
+    parsed = urlparse(video_url)
+    
+    # Handle both formats:
+    # 1. https://bucket.s3.region.amazonaws.com/key
+    # 2. https://s3.region.amazonaws.com/bucket/key
+    if '.s3.' in parsed.netloc or '.s3-' in parsed.netloc:
+        # Format 1: bucket.s3.region.amazonaws.com
+        bucket_name = parsed.netloc.split('.s3')[0]
+        s3_key = parsed.path.lstrip('/')
+        
+        # Extract region from URL
+        region_match = parsed.netloc.split('.s3.')[1] if '.s3.' in parsed.netloc else None
+        if region_match:
+            region = region_match.split('.amazonaws.com')[0]
+        else:
+            region = 'us-east-1'  # default
+    else:
+        # Not an S3 URL, return as-is (might be presigned already or public)
+        return video_url
+    
+    # Create S3 client
+    s3_client = boto3.client(
+        's3',
+        region_name=region,
+        config=Config(signature_version='s3v4')
+    )
+    
+    # Generate presigned URL
+    presigned_url = s3_client.generate_presigned_url(
+        'get_object',
+        Params={
+            'Bucket': bucket_name,
+            'Key': s3_key
+        },
+        ExpiresIn=expiration
+    )
+    
+    print(f"Generated presigned URL (expires in {expiration}s)")
+    return presigned_url
 
 
 def process_frames_remote(text_transcript: dict, video_url: str, frame_interval: int = 30) -> dict:
@@ -37,7 +84,7 @@ def process_frames_remote(text_transcript: dict, video_url: str, frame_interval:
     
     Args:
         text_transcript: Dict with video_metadata and segments
-        video_url: Public URL to download video (S3 presigned, public URL, etc.)
+        video_url: S3 URL or public URL to video
         frame_interval: Process every Nth frame (default 30)
     
     Returns:
@@ -45,6 +92,9 @@ def process_frames_remote(text_transcript: dict, video_url: str, frame_interval:
     """
     if not API_KEY or not ENDPOINT_ID:
         raise ValueError("API_KEY and ENDPOINT_ID must be set in .env file")
+    
+    # Convert S3 URL to presigned URL if needed
+    video_url = convert_to_presigned_url(video_url)
     
     url = f"https://api.runpod.ai/v2/{ENDPOINT_ID}/run"
     
@@ -113,12 +163,12 @@ if __name__ == "__main__":
     }
     
     # Replace with your actual video URL
-    VIDEO_URL = "https://your-bucket.s3.amazonaws.com/video.webm"
+    VIDEO_URL = "https://video-analysis-bk.s3.eu-central-1.amazonaws.com/media/uploads/videos/2026_01_04___23_51_57_video-1767563505594/original.webm"
     
     print("Processing video on RunPod...")
     result = process_frames_remote(sample_transcript, VIDEO_URL)
     
-    print("\n✅ Done!")
+    print("\n[SUCCESS] Done!")
     print(f"Processed {len(result.get('segments', []))} segments")
     
     # Save result
