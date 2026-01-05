@@ -1,3 +1,4 @@
+from pathlib import Path
 from django.conf import settings
 try:
     from .process_text import analyze_text
@@ -10,15 +11,44 @@ except:
     from video_analyzer.process_voice import process_voice_features
     from video_analyzer.utils_processor import save_debug_transcript, debug_print_text_analysis, print_voice_features
 
+# Import RunPod processing functions
+import sys
+from pathlib import Path as PathLib
+runpod_path = str(PathLib(__file__).parent.parent / 'runpod')
+if runpod_path not in sys.path:
+    sys.path.insert(0, runpod_path)
+
+# Try to import RunPod processing functions
+process_frames_remote = None
+try:
+    from enpoint import process_frames_remote  # type: ignore
+except ImportError:
+    # Fallback if runpod module not available
+    pass
+
 import logging
 logger = logging.getLogger(__name__)
 
 DEBUG = False
+USE_RUNPOD = getattr(settings, 'USE_RUNPOD', False)  # Control via Django settings
 
-def process_video_file(paths):
-    """Main function to process a video file"""
 
+def process_video_file(paths, video_id=None, use_runpod=None):
+    """
+    Main function to process a video file
+    
+    Args:
+        paths: Dict with 'original_video', 'audio_file', 'base_dir' paths
+        video_id: Video ID for S3 key generation (required if using RunPod with S3)
+        use_runpod: Override USE_RUNPOD setting (True=remote, False=local, None=use setting)
+    """
+    # Determine processing mode
+    if use_runpod is None:
+        use_runpod = USE_RUNPOD
+    
     logger.info(f"Processing video file: {paths['original_video']}")
+    logger.info(f"Processing mode: {'RunPod (Remote)' if use_runpod else 'Local'}")
+    
     ############## process text
     logger.info("Processing text...")
     text_transcript = analyze_text(video_path=paths['original_video'], dst_audio_path=paths['audio_file'], model_size="base", language='en', cleanup=True)    
@@ -27,7 +57,24 @@ def process_video_file(paths):
 
     ############## process frames
     logger.info("Processing frames...")
-    images_text_transcript = process_video_segments(text_transcript, paths['original_video'])
+    
+    if use_runpod:
+        # Process on RunPod (remote GPU)
+        if process_frames_remote is None:
+            raise ImportError("RunPod module not available. Install runpod requirements.")
+        
+        logger.info("Using RunPod for frame processing (remote GPU)")
+        images_text_transcript = process_frames_remote(
+            text_transcript=text_transcript,
+            video_url=paths['file_url'],
+            frame_interval=30
+        )
+        logger.info("RunPod processing completed successfully")
+    else:
+        # Process locally
+        logger.info("Using local processing for frames")
+        images_text_transcript = process_video_segments(text_transcript, paths['original_video'])
+    
     save_debug_transcript(images_text_transcript, 'images_text_transcript', paths, dbg_local=DEBUG)
 
     ############## process voice

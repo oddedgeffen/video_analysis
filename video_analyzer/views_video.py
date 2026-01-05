@@ -140,7 +140,7 @@ def process_video_from_s3(request):
         with open(paths['original_video'], 'wb') as f:
             s3_client.download_fileobj(bucket, s3_key, f)
 
-        threading.Thread(target=_process_video_async, args=(paths, timestamp), daemon=True).start()
+        threading.Thread(target=_process_video_async, args=(paths, video_id), daemon=True).start()
 
         return Response({
             'videoId': video_id,
@@ -154,11 +154,11 @@ def process_video_from_s3(request):
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 
-def _process_video_async(paths: dict, timestamp: str) -> None:
+def _process_video_async(paths: dict, video_id: str) -> None:
     """Background processing task that generates results.json when done."""
     try:
         logger.info('Background processing started')
-        results = process_video_file(paths)
+        results = process_video_file(paths, video_id=video_id)
 
         # Ensure base directory exists
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
@@ -263,6 +263,7 @@ def upload_and_process_video(request):
             storage_key = default_storage.save(storage_rel_path, ContentFile(video_file.read()))
             try:
                 file_url = default_storage.url(storage_key)
+                paths['file_url'] = file_url
                 logger.info(f"Stored uploaded video to S3 at '{storage_key}', url='{file_url}'")
             except Exception:
                 logger.info(f"Stored uploaded video to S3 at '{storage_key}'")
@@ -285,7 +286,7 @@ def upload_and_process_video(request):
             logger.info(f"Saved video locally at {paths['original_video']}")
         
         # Kick off background processing so the request returns immediately
-        threading.Thread(target=_process_video_async, args=(paths, timestamp), daemon=True).start()
+        threading.Thread(target=_process_video_async, args=(paths, filename_no_ext), daemon=True).start()
 
         # Immediately inform the client to start polling
         return Response({
