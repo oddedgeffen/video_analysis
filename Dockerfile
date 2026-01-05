@@ -12,11 +12,15 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/
-COPY runpod/requirements-runpod.txt .
 
+# Copy requirements and install dependencies
+COPY runpod/requirements-runpod.txt .
 RUN pip install --no-cache-dir -r requirements-runpod.txt
 
+# Copy handler
 COPY runpod/handler.py .
-COPY runpod/process_frames.py .
+
+# Copy process_frames from video_analyzer (single source of truth)
+COPY video_analyzer/process_frames.py .
 
 CMD ["python", "-u", "handler.py"]
