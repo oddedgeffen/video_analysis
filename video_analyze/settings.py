@@ -43,6 +43,7 @@ ALLOWED_HOSTS = os.environ.get(
 ).split(",")
 
 USE_S3 = os.environ.get("USE_S3", "False") == "True"
+USE_RUNPOD = os.environ.get("USE_RUNPOD", "False") == "True"
 
 # Application definition
 
