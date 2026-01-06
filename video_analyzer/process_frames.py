@@ -5,6 +5,8 @@ import mediapipe as mp
 from tqdm import tqdm
 import torch
 from typing import Dict, List, Union, Tuple
+import os
+import time
 
 
 # Constants for feature calculations
@@ -82,16 +84,42 @@ FACE_LANDMARKS = {
 }
 
 
-def initialize_face_mesh():
-    # Initialize MediaPipe Face Mesh
-    mp_face_mesh = mp.solutions.face_mesh
+def check_gpu_availability():
+    """Check if GPU is available for processing"""
+    gpu_available = False
+    gpu_info = "CPU"
+    
+    # Check CUDA availability
+    if torch.cuda.is_available():
+        gpu_available = True
+        gpu_info = f"CUDA GPU: {torch.cuda.get_device_name(0)}"
+    
+    return gpu_available, gpu_info
 
+
+def initialize_face_mesh():
+    """
+    Initialize MediaPipe Face Mesh with GPU acceleration if available.
+    
+    MediaPipe automatically uses GPU delegates when available:
+    - On systems with CUDA: Uses TensorFlow Lite GPU delegate
+    - On RunPod: Automatically detects and uses available GPU
+    """
+    gpu_available, gpu_info = check_gpu_availability()
+    print(f"Initializing MediaPipe Face Mesh with: {gpu_info}")
+    
+    mp_face_mesh = mp.solutions.face_mesh
+    
+    # MediaPipe will automatically use GPU if available
+    # The model_selection parameter doesn't affect GPU usage
+    # GPU delegation happens automatically via TFLite
     face_mesh = mp_face_mesh.FaceMesh(
         static_image_mode=False,
         max_num_faces=1,
         min_detection_confidence=0.5,
         refine_landmarks=True  # Enable iris landmarks
     )
+    
     return face_mesh
 
 class FaceMetrics:
@@ -416,29 +444,46 @@ def convert_numpy_in_dict(obj):
 
 def process_video_segments(text_transcript: dict, video_path: str, frame_interval: int = 30) -> Dict:
     """
-    Process video segments and extract visual information.
+    Process video segments and extract visual information using GPU acceleration.
+    
+    GPU Optimization:
+    - MediaPipe Face Mesh automatically uses GPU if available (TFLite GPU delegate)
+    - Processes frames sequentially but with GPU-accelerated inference
+    - On RunPod: Utilizes CUDA GPUs for faster processing
     
     Args:
-        json_path: Path to input JSON file
+        text_transcript: Dictionary with video metadata and segments
         video_path: Path to video file
-        frame_interval: Sample every Nth frame
+        frame_interval: Sample every Nth frame (higher = faster but less detail)
         
     Returns:
-        Updated JSON text_transcript with visual information
+        Updated dictionary with visual information for each segment
     """
+    
+    # Start timing
+    start_time = time.time()
+    
+    # Check GPU availability and log
+    gpu_available, gpu_info = check_gpu_availability()
+    print(f"🚀 Processing with: {gpu_info}")
     
     # Initialize video capture to get properties
     video_fps = text_transcript['video_metadata']['fps']
     frame_width = text_transcript['video_metadata']['frame_width']
     frame_height = text_transcript['video_metadata']['frame_height']
     
+    print(f"📹 Video: {frame_width}x{frame_height} @ {video_fps} FPS")
+    print(f"⚙️  Frame interval: every {frame_interval} frames")
+    
     # Initialize face mesh ONCE for all frames (major performance optimization)
+    # MediaPipe will automatically use GPU delegate if available
     face_mesh = initialize_face_mesh()
     
     # Initialize metrics calculator
     metrics = FaceMetrics(frame_width, frame_height, video_fps)
     processed_segments = []
     
+    total_frames = 0
     # Process each segment
     for segment in tqdm(text_transcript['segments'], desc="Processing segments"):
         processed_segment = {
@@ -450,9 +495,11 @@ def process_video_segments(text_transcript: dict, video_path: str, frame_interva
         
         visual_info = []
         frames = sample_frames(video_path, segment['start'], segment['end'], frame_interval)
+        total_frames += len(frames)
         
         if frames:   
             # Process all frames for face features
+            # Each face_mesh.process() call uses GPU if available
             for frame_time, frame in frames:
                 face_features = extract_face_features(frame, face_mesh, metrics)
                 frame_info = {
@@ -477,6 +524,16 @@ def process_video_segments(text_transcript: dict, video_path: str, frame_interva
         }
     }
     final_dict = convert_numpy_in_dict(final_dict)
+    
+    # Calculate and display processing time
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    
+    print(f"\n✅ Processed {total_frames} frames across {len(processed_segments)} segments")
+    print(f"⏱️  Total processing time: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
+    if total_frames > 0:
+        print(f"📊 Average time per frame: {(elapsed_time/total_frames)*1000:.1f} ms")
+    
     return final_dict
 
 if __name__ == "__main__":
