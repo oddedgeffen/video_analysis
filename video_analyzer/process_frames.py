@@ -7,8 +7,16 @@ import torch
 from typing import Dict, List, Union, Tuple
 import os
 import time
-from multiprocessing import Pool, cpu_count
+import multiprocessing
 from functools import partial
+
+# Set multiprocessing start method to 'spawn' for CUDA compatibility
+# Must be done before any CUDA operations
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except RuntimeError:
+    # Already set, ignore
+    pass
 
 
 # Constants for feature calculations
@@ -448,8 +456,11 @@ def process_frame_worker(frame_data, frame_width, frame_height, fps):
     Worker function for multiprocessing frame analysis.
     Each worker gets its own Face Mesh instance to avoid conflicts.
     
+    Uses 'spawn' multiprocessing method for CUDA compatibility.
+    Each spawned process starts fresh and initializes its own CUDA context.
+    
     Args:
-        frame_data: Tuple of (frame_time, frame, segment_start, segment_end)
+        frame_data: Tuple of (frame_time, frame)
         frame_width: Video frame width
         frame_height: Video frame height  
         fps: Video FPS
@@ -460,7 +471,7 @@ def process_frame_worker(frame_data, frame_width, frame_height, fps):
     frame_time, frame = frame_data
     
     # Initialize Face Mesh for this worker process
-    # Each process needs its own instance for GPU access
+    # With 'spawn' method, each process starts fresh with clean CUDA state
     face_mesh = initialize_face_mesh()
     metrics = FaceMetrics(frame_width, frame_height, fps)
     
@@ -515,7 +526,7 @@ def process_video_segments(
     # Determine worker count for multiprocessing
     if num_workers is None:
         # Default: min of CPU count or 4 (GPU can handle 2-4 parallel streams efficiently)
-        num_workers = min(cpu_count(), 4)
+        num_workers = min(multiprocessing.cpu_count(), 4)
     
     # Disable multiprocessing if only 1 worker or explicitly disabled
     if num_workers <= 1:
@@ -555,8 +566,8 @@ def process_video_segments(
                     fps=video_fps
                 )
                 
-                # Process frames in parallel
-                with Pool(processes=num_workers) as pool:
+                # Process frames in parallel using 'spawn' method for CUDA compatibility
+                with multiprocessing.Pool(processes=num_workers) as pool:
                     visual_info = pool.map(worker_fn, frames)
             else:
                 # Sequential mode: Process frames one by one
