@@ -77,15 +77,23 @@ def convert_to_presigned_url(video_url: str, expiration: int = 7200) -> str:
     return presigned_url
 
 
-def process_frames_remote(text_transcript: dict, video_url: str, frame_interval: int = 30) -> dict:
+def process_frames_remote(
+    text_transcript: dict, 
+    video_url: str, 
+    frame_interval: int = 30,
+    use_multiprocessing: bool = True,
+    num_workers: int = None
+) -> dict:
     """
-    Process video frames on RUNPOD endpoint using MediaPipe.
+    Process video frames on RUNPOD endpoint using MediaPipe with multiprocessing.
     Use this to offload heavy GPU processing to the cloud.
     
     Args:
         text_transcript: Dict with video_metadata and segments
         video_url: S3 URL or public URL to video
         frame_interval: Process every Nth frame (default 30)
+        use_multiprocessing: Enable parallel frame processing (default True)
+        num_workers: Number of worker processes (default auto, max 4)
     
     Returns:
         Dict with processed segments containing face features
@@ -107,7 +115,9 @@ def process_frames_remote(text_transcript: dict, video_url: str, frame_interval:
         "input": {
             "video_url": video_url,
             "text_transcript": text_transcript,
-            "frame_interval": frame_interval
+            "frame_interval": frame_interval,
+            "use_multiprocessing": use_multiprocessing,
+            "num_workers": num_workers
         }
     }
     
