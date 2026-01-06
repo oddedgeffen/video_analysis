@@ -59,7 +59,7 @@ def process_video_file(paths, video_id=None, use_runpod=None):
     logger.info("Processing frames...")
     
     if use_runpod:
-        # Process on RunPod (remote GPU)
+        # Process on RunPod (remote GPU) #
         if process_frames_remote is None:
             raise ImportError("RunPod module not available. Install runpod requirements.")
         
