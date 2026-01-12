@@ -7,16 +7,6 @@ import torch
 from typing import Dict, List, Union, Tuple
 import os
 import time
-import multiprocessing
-from functools import partial
-
-# Set multiprocessing start method to 'spawn' for CUDA compatibility
-# Must be done before any CUDA operations
-try:
-    multiprocessing.set_start_method('spawn', force=True)
-except RuntimeError:
-    # Already set, ignore
-    pass
 
 
 # Constants for feature calculations
@@ -451,61 +441,23 @@ def convert_numpy_in_dict(obj):
         return obj
 
 
-def process_frame_worker(frame_data, frame_width, frame_height, fps):
-    """
-    Worker function for multiprocessing frame analysis.
-    Each worker gets its own Face Mesh instance to avoid conflicts.
-    
-    Uses 'spawn' multiprocessing method for CUDA compatibility.
-    Each spawned process starts fresh and initializes its own CUDA context.
-    
-    Args:
-        frame_data: Tuple of (frame_time, frame)
-        frame_width: Video frame width
-        frame_height: Video frame height  
-        fps: Video FPS
-        
-    Returns:
-        Dictionary with frame_time and face_features
-    """
-    frame_time, frame = frame_data
-    
-    # Initialize Face Mesh for this worker process
-    # With 'spawn' method, each process starts fresh with clean CUDA state
-    face_mesh = initialize_face_mesh()
-    metrics = FaceMetrics(frame_width, frame_height, fps)
-    
-    # Process the frame
-    face_features = extract_face_features(frame, face_mesh, metrics)
-    
-    return {
-        "frame_time": float(frame_time),
-        "face_features": face_features
-    }
-
-
-
 def process_video_segments(
     text_transcript: dict, 
     video_path: str, 
-    frame_interval: int = 30,
-    use_multiprocessing: bool = True,
-    num_workers: int = None
+    frame_interval: int = 30
 ) -> Dict:
     """
     Process video segments and extract visual information using GPU acceleration.
     
     GPU Optimization:
     - MediaPipe Face Mesh automatically uses GPU if available (TFLite GPU delegate)
-    - With multiprocessing: Multiple processes can share GPU for parallel inference
-    - On RunPod: Utilizes CUDA GPUs for faster processing
+    - Sequential processing leverages GPU efficiently
+    - On RunPod: CUDA GPU processes frames at ~15ms each
     
     Args:
         text_transcript: Dictionary with video metadata and segments
         video_path: Path to video file
         frame_interval: Sample every Nth frame (higher = faster but less detail)
-        use_multiprocessing: Enable parallel processing (default True for RunPod)
-        num_workers: Number of worker processes (default: CPU count, max 4 for GPU)
         
     Returns:
         Updated dictionary with visual information for each segment
@@ -523,19 +475,13 @@ def process_video_segments(
     frame_width = text_transcript['video_metadata']['frame_width']
     frame_height = text_transcript['video_metadata']['frame_height']
     
-    # Determine worker count for multiprocessing
-    if num_workers is None:
-        # Default: min of CPU count or 4 (GPU can handle 2-4 parallel streams efficiently)
-        num_workers = min(multiprocessing.cpu_count(), 4)
-    
-    # Disable multiprocessing if only 1 worker or explicitly disabled
-    if num_workers <= 1:
-        use_multiprocessing = False
-    
-    processing_mode = f"Multiprocessing ({num_workers} workers)" if use_multiprocessing else "Sequential"
     print(f"📹 Video: {frame_width}x{frame_height} @ {video_fps} FPS")
     print(f"⚙️  Frame interval: every {frame_interval} frames")
-    print(f"⚡ Processing mode: {processing_mode}")
+    print(f"⚡ Processing mode: Sequential (GPU-accelerated)")
+    
+    # Initialize face mesh ONCE for all frames (reused across frames)
+    face_mesh = initialize_face_mesh()
+    metrics = FaceMetrics(frame_width, frame_height, video_fps)
     
     processed_segments = []
     total_frames = 0
@@ -555,33 +501,14 @@ def process_video_segments(
         
         visual_info = []
         
-        if frames:
-            if use_multiprocessing and len(frames) > 1:
-                # Multiprocessing mode: Process frames in parallel
-                # Create worker function with fixed parameters
-                worker_fn = partial(
-                    process_frame_worker,
-                    frame_width=frame_width,
-                    frame_height=frame_height,
-                    fps=video_fps
-                )
-                
-                # Process frames in parallel using 'spawn' method for CUDA compatibility
-                with multiprocessing.Pool(processes=num_workers) as pool:
-                    visual_info = pool.map(worker_fn, frames)
-            else:
-                # Sequential mode: Process frames one by one
-                # Initialize face mesh ONCE for all frames (reused across frames)
-                face_mesh = initialize_face_mesh()
-                metrics = FaceMetrics(frame_width, frame_height, video_fps)
-                
-                for frame_time, frame in frames:
-                    face_features = extract_face_features(frame, face_mesh, metrics)
-                    frame_info = {
-                        "frame_time": float(frame_time),
-                        "face_features": face_features
-                    }
-                    visual_info.append(frame_info)
+        # Process frames sequentially
+        for frame_time, frame in frames:
+            face_features = extract_face_features(frame, face_mesh, metrics)
+            frame_info = {
+                "frame_time": float(frame_time),
+                "face_features": face_features
+            }
+            visual_info.append(frame_info)
         
         processed_segment['visual_info'] = visual_info
         processed_segments.append(processed_segment)

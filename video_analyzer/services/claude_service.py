@@ -26,7 +26,7 @@ Use this multimodal analysis data to provide comprehensive feedback and answer a
             response = self.client.messages.create(
                 model=self.model,
                 system=system_prompt,
-                max_tokens=3000,
+                max_tokens=1500,
                 messages=[{"role": "user", "content": initial_prompt}]
             )
             
@@ -54,7 +54,7 @@ Use this multimodal analysis data to provide comprehensive feedback and answer a
             response = self.client.messages.create(
                 model=self.model,
                 system=system_prompt,
-                max_tokens=1000,
+                max_tokens=400,
                 messages=updated_history
             )
             

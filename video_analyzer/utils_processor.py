@@ -6,6 +6,33 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def decimal_limit_transcript(transcript: dict, limit: int) -> dict:
+    """
+    Limit decimal places in transcript to reduce file size and improve readability.
+    Recursively processes all nested dictionaries and lists.
+    
+    Args:
+        transcript: Dictionary containing transcript data with numerical values
+        limit: Number of decimal places to keep (e.g., 3 for 0.123)
+    
+    Returns:
+        Modified transcript with limited decimal places
+        
+    Example:
+        >>> data = {"value": 0.123456789, "nested": {"val": 1.987654321}}
+        >>> decimal_limit_transcript(data, 3)
+        {"value": 0.123, "nested": {"val": 1.988}}
+    """
+    if isinstance(transcript, dict):
+        return {key: decimal_limit_transcript(value, limit) for key, value in transcript.items()}
+    elif isinstance(transcript, list):
+        return [decimal_limit_transcript(item, limit) for item in transcript]
+    elif isinstance(transcript, float):
+        return round(transcript, limit)
+    else:
+        # Return as-is for int, str, bool, None, etc.
+        return transcript
+
 def save_debug_transcript(transcript: dict, dst_filename: str, paths: dict, dbg_local=False) -> None:
     """
     Save transcript and analysis metadata to debug directory if DEBUG mode is enabled

@@ -80,20 +80,16 @@ def convert_to_presigned_url(video_url: str, expiration: int = 7200) -> str:
 def process_frames_remote(
     text_transcript: dict, 
     video_url: str, 
-    frame_interval: int = 30,
-    use_multiprocessing: bool = True,
-    num_workers: int = None
+    frame_interval: int = 30
 ) -> dict:
     """
-    Process video frames on RUNPOD endpoint using MediaPipe with multiprocessing.
+    Process video frames on RUNPOD endpoint using MediaPipe with GPU acceleration.
     Use this to offload heavy GPU processing to the cloud.
     
     Args:
         text_transcript: Dict with video_metadata and segments
         video_url: S3 URL or public URL to video
         frame_interval: Process every Nth frame (default 30)
-        use_multiprocessing: Enable parallel frame processing (default True)
-        num_workers: Number of worker processes (default auto, max 4)
     
     Returns:
         Dict with processed segments containing face features
@@ -115,9 +111,7 @@ def process_frames_remote(
         "input": {
             "video_url": video_url,
             "text_transcript": text_transcript,
-            "frame_interval": frame_interval,
-            "use_multiprocessing": use_multiprocessing,
-            "num_workers": num_workers
+            "frame_interval": frame_interval
         }
     }
     
@@ -176,7 +170,8 @@ if __name__ == "__main__":
     VIDEO_URL = "https://video-analysis-bk.s3.eu-central-1.amazonaws.com/media/uploads/videos/2026_01_04___23_51_57_video-1767563505594/original.webm"
     
     print("Processing video on RunPod...")
-    result = process_frames_remote(sample_transcript, VIDEO_URL)
+    # Use frame_interval=60 for 2x speed (sample every 2 seconds instead of 1)
+    result = process_frames_remote(sample_transcript, VIDEO_URL, frame_interval=60)
     
     print("\n[SUCCESS] Done!")
     print(f"Processed {len(result.get('segments', []))} segments")

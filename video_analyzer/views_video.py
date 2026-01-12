@@ -159,7 +159,11 @@ def _process_video_async(paths: dict, video_id: str) -> None:
     try:
         logger.info('Background processing started')
         results = process_video_file(paths, video_id=video_id)
-
+        ##############
+        # import json
+        # with open('debug_data/final_transcript.json', 'r') as f:  # Note: 'r' not 'rb'
+        #     results = json.load(f)
+        ##############
         # Ensure base directory exists
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
 
