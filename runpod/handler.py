@@ -74,7 +74,7 @@ def handler(event):
             
             # Process frames with MediaPipe (GPU-accelerated)
             print("Processing video with MediaPipe...")
-            result = (
+            result = process_video_segments(
                 text_transcript=text_transcript,
                 video_path=video_path,
                 frame_interval=frame_interval
