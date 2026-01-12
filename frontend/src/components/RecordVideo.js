@@ -45,6 +45,12 @@ const RecordVideo = () => {
   const [selectedMic, setSelectedMic] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
   const [cameraInitialized, setCameraInitialized] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const recordingTimerRef = useRef(null);
+  const recordingTimeCountRef = useRef(0);
+
+  // Maximum recording duration in seconds
+  const MAX_RECORDING_DURATION = 30;
 
   // Admin bypass logic - if user is admin, skip all trial validation
   const isAdminUser = isAdmin && authChecked;
@@ -330,6 +336,14 @@ const RecordVideo = () => {
       };
 
       mediaRecorder.onstop = () => {
+        // Clear the recording timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+        setRecordingTime(0);
+        recordingTimeCountRef.current = 0;
+
         // Stop the stream and clean up
         cleanup();
         setCameraInitialized(false);
@@ -349,6 +363,29 @@ const RecordVideo = () => {
       setIsRecording(true);
       setError(null);
       setProcessingStatus(null);
+      setRecordingTime(0);
+      recordingTimeCountRef.current = 0;
+
+      // Start recording timer
+      recordingTimerRef.current = setInterval(() => {
+        recordingTimeCountRef.current += 1;
+        setRecordingTime(recordingTimeCountRef.current);
+
+        // Auto-stop at MAX_RECORDING_DURATION seconds
+        if (recordingTimeCountRef.current >= MAX_RECORDING_DURATION) {
+          // Stop directly without relying on state
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+
+            // Clear the timer
+            if (recordingTimerRef.current) {
+              clearInterval(recordingTimerRef.current);
+              recordingTimerRef.current = null;
+            }
+          }
+        }
+      }, 1000);
     } catch (err) {
       setError("Failed to start recording");
       console.error("Recording error:", err);
@@ -359,6 +396,13 @@ const RecordVideo = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+
+      // Clear the timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      recordingTimeCountRef.current = 0;
     }
   };
 
@@ -746,21 +790,21 @@ const RecordVideo = () => {
           )}
         </Box>
 
-        {/* Recording Status */}
+        {/* Recording Timer */}
         {isRecording && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box
-              sx={{
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                backgroundColor: 'red',
-                animation: 'blink 1s infinite'
-              }}
-            />
-            <Typography variant="body2" color="error">
-              Recording...
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+            <Typography
+              variant="h5"
+              color="primary"
+              sx={{ fontWeight: 'bold', fontFamily: 'monospace' }}
+            >
+              {recordingTime}s / {MAX_RECORDING_DURATION}s
             </Typography>
+            {recordingTime >= MAX_RECORDING_DURATION - 5 && (
+              <Typography variant="caption" color="text.secondary">
+                Recording will stop automatically in {MAX_RECORDING_DURATION - recordingTime} seconds
+              </Typography>
+            )}
           </Box>
         )}
 
@@ -806,16 +850,16 @@ const RecordVideo = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
               <CircularProgress size={24} />
               <Typography variant="body2">
-                {processingStatus === 'uploading' && 'Uploading video...'}
-                {processingStatus === 'processing' && 'Analyzing video...'}
+                {processingStatus === 'uploading' && 'Uploading your video...'}
+                {processingStatus === 'processing' && 'AI analysis in progress...'}
               </Typography>
             </Box>
             <Alert severity="info">
               {processingStatus === 'uploading' &&
-                'Uploading your video to the server...'
+                '📤 Uploading your video securely...'
               }
               {processingStatus === 'processing' &&
-                'Your video is being analyzed. This may take a few minutes depending on the video length. Please don\'t close this window.'
+                '🎯 Our AI is analyzing your facial expressions, voice patterns, and speech content. This typically takes 30-60 seconds. Please keep this window open!'
               }
             </Alert>
           </Box>
@@ -847,26 +891,16 @@ const RecordVideo = () => {
             <br />
             2. Wait for the camera preview to appear
             <br />
-            3. Click "Start Recording" to begin
+            3. Click "Start Recording" to begin (maximum {MAX_RECORDING_DURATION} seconds)
             <br />
             4. Speak clearly and look at the camera
             <br />
-            5. Click "Stop Recording" when finished
+            5. Click "Stop Recording" when finished (or it will auto-stop at {MAX_RECORDING_DURATION}s)
             <br />
             6. Your video will automatically download and be processed for analysis
           </Typography>
         </Paper>
       </Paper>
-
-      {/* CSS for blinking animation */}
-      <style>
-        {`
-          @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0; }
-          }
-        `}
-      </style>
     </Box>
   );
 };
