@@ -28,6 +28,9 @@ db.sqlite3-journal
 media/
 staticfiles/
 
+# Debug data
+debug_data/
+
 # Virtual Environment
 venv/
 ENV/
