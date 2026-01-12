@@ -127,13 +127,27 @@ const ChatPage = () => {
           }}
         >
           <CircularProgress size={60} />
-          <Typography variant="h6" align="center">
-            Processing Your Video
+          <Typography variant="h6" align="center" sx={{ fontWeight: 600 }}>
+            🎬 Your Video is Being Analyzed!
           </Typography>
-          <Typography variant="body1" align="center" color="text.secondary">
-            We're analyzing your video and preparing the AI assistant.
+          <Typography variant="body1" align="center" color="text.secondary" sx={{ maxWidth: 500 }}>
+            Our AI is processing your <strong>facial expressions</strong>, <strong>voice patterns</strong>, and <strong>speech content</strong> to provide personalized feedback.
             <br />
-            This may take a few minutes depending on the video length.
+            <br />
+            This typically takes 30-60 seconds.
+          </Typography>
+          <Typography
+            variant="body2"
+            align="center"
+            sx={{
+              mt: 1,
+              p: 2,
+              bgcolor: 'primary.lighter',
+              borderRadius: 1,
+              maxWidth: 450
+            }}
+          >
+            💡 <strong>Pro Tip:</strong> Once ready, ask the AI specific questions like "What should I improve?" or "How confident did I appear?"
           </Typography>
         </Box>
       </Box>
