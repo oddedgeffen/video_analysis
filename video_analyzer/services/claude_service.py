@@ -10,13 +10,30 @@ class ClaudeVideoAnalysisService:
         self.question_limit = 10
     
     def build_system_prompt(self, transcript_data, guidelines):
-        """Build system prompt ONCE with guidelines + transcript (like Streamlit)"""
-        return f"""{guidelines}
-
-VIDEO ANALYSIS DATA:
+        """
+        Build system prompt with Claude Prompt Caching enabled.
+        Caches both guidelines and video data for maximum cost savings (90% off cached tokens).
+        
+        Cache strategy:
+        - Guidelines: Cached (same across all videos)
+        - Video data: Cached (same for all questions on one video)
+        - Cache TTL: 5 minutes (perfect for conversation flow)
+        """
+        return [
+            {
+                "type": "text",
+                "text": guidelines,
+                "cache_control": {"type": "ephemeral"}  # Cache guidelines (reused across all videos)
+            },
+            {
+                "type": "text",
+                "text": f"""VIDEO ANALYSIS DATA:
 {json.dumps(transcript_data, indent=2)}
 
-Use this multimodal analysis data to provide comprehensive feedback and answer any questions about the video performance. The data includes voice features, facial expressions, head movement, eye contact, and transcript text."""
+Use this multimodal analysis data to provide comprehensive feedback and answer any questions about the video performance. The data includes voice features, facial expressions, head movement, eye contact, and transcript text.""",
+                "cache_control": {"type": "ephemeral"}  # Cache video data (reused across questions)
+            }
+        ]
     
     def get_initial_analysis(self, system_prompt):
         """Generate initial analysis (like Streamlit first load)"""
