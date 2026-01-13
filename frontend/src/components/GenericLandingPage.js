@@ -28,7 +28,7 @@ function GenericLandingPage() {
                             lineHeight: 1.2
                         }}
                     >
-                        Video Analysis Service
+                        AI-Powered Presentation Feedback
                     </Typography>
 
                     <Typography
@@ -43,7 +43,7 @@ function GenericLandingPage() {
                             color: 'text.secondary'
                         }}
                     >
-                        Access this service using a valid trial link or admin credentials
+                        Please use a valid trial link to access the service, or sign in as admin
                     </Typography>
 
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
