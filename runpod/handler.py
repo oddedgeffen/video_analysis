@@ -28,7 +28,7 @@ def download_video(video_url: str, temp_dir: str) -> str:
 
 def handler(event):
     """
-    RunPod handler for MediaPipe face analysis with GPU acceleration.
+    RunPod handler for MediaPipe face analysis.
     
     Input options:
     1. video_url: URL to download video from (S3, public URL, etc.)
@@ -75,7 +75,7 @@ def handler(event):
                 with open(video_path, 'wb') as f:
                     f.write(base64.b64decode(video_base64))
             
-            # Process frames with MediaPipe (GPU-accelerated or multiprocessed)
+            # Process frames with MediaPipe
             print("Processing video with MediaPipe...")
             result = process_video_segments(
                 text_transcript=text_transcript,

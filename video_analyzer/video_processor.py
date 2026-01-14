@@ -59,11 +59,11 @@ def process_video_file(paths, video_id=None, use_runpod=None, use_multiprocessin
     logger.info("Processing frames...")
     frame_interval = int(text_transcript['video_metadata']['fps'])
     if use_runpod:
-        # Process on RunPod (remote GPU) #
+        # Process on RunPod (remote) #
         if process_frames_remote is None:
             raise ImportError("RunPod module not available. Install runpod requirements.")
         
-        logger.info("Using RunPod for frame processing (remote GPU)")
+        logger.info("Using RunPod for frame processing (remote)")
         # frame_interval=60 samples every 2 seconds (2x faster than every 1 second)
         # Increase to 90 for 3x faster (every 3 seconds)
         images_text_transcript = process_frames_remote(

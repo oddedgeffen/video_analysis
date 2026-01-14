@@ -3,14 +3,13 @@ import cv2
 import numpy as np
 import mediapipe as mp
 from tqdm import tqdm
-import torch
 from typing import Dict, List, Union, Tuple
 import os
 import time
 import multiprocessing
 from multiprocessing import Pool, cpu_count
 
-# Set spawn method for multiprocessing (required for CUDA/MediaPipe compatibility)
+# Set spawn method for multiprocessing (required for MediaPipe compatibility)
 try:
     multiprocessing.set_start_method('spawn', force=True)
 except RuntimeError:

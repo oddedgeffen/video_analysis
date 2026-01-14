@@ -5,7 +5,7 @@ Usage:
     # Option 1: Run locally
     result = process_frames_local(text_transcript, video_path)
     
-    # Option 2: Run on RunPod (GPU cloud)
+    # Option 2: Run on RunPod (cloud)
     result = process_frames_remote(text_transcript, video_url)
 """
 
@@ -84,8 +84,8 @@ def process_frames_remote(
     use_multiprocessing: bool = False
 ) -> dict:
     """
-    Process video frames on RUNPOD endpoint using MediaPipe with GPU acceleration.
-    Use this to offload heavy GPU processing to the cloud.
+    Process video frames on RUNPOD endpoint using MediaPipe.
+    Use this to offload heavy processing to the cloud.
     
     Args:
         text_transcript: Dict with video_metadata and segments
