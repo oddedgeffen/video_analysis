@@ -35,6 +35,7 @@ def handler(event):
     2. video_base64: Base64 encoded video data
     3. text_transcript: Pre-computed transcript with segments
     4. frame_interval: Sample every Nth frame (default 30)
+    5. use_multiprocessing: Enable multiprocessing for parallel frame processing (auto-detects CPU count)
     
     Example input:
     {
@@ -44,7 +45,8 @@ def handler(event):
                 "video_metadata": {"fps": 30, "frame_width": 640, "frame_height": 480},
                 "segments": [{"start": 0, "end": 5, "text": "Hello"}]
             },
-            "frame_interval": 30
+            "frame_interval": 30,
+            "use_multiprocessing": true
         }
     }
     """
@@ -55,6 +57,7 @@ def handler(event):
         video_base64 = job_input.get("video_base64")
         text_transcript = job_input.get("text_transcript")
         frame_interval = job_input.get("frame_interval", 30)
+        use_multiprocessing = job_input.get("use_multiprocessing", False)
         
         if not video_url and not video_base64:
             return {"error": "Either video_url or video_base64 is required"}
@@ -72,12 +75,13 @@ def handler(event):
                 with open(video_path, 'wb') as f:
                     f.write(base64.b64decode(video_base64))
             
-            # Process frames with MediaPipe (GPU-accelerated)
+            # Process frames with MediaPipe (GPU-accelerated or multiprocessed)
             print("Processing video with MediaPipe...")
             result = process_video_segments(
                 text_transcript=text_transcript,
                 video_path=video_path,
-                frame_interval=frame_interval
+                frame_interval=frame_interval,
+                use_multiprocessing=use_multiprocessing
             )
             
             print(f"Processing complete! {len(result.get('segments', []))} segments processed")
