@@ -93,35 +93,12 @@ FACE_LANDMARKS = {
 }
 
 
-def check_gpu_availability():
-    """Check if GPU is available for processing"""
-    gpu_available = False
-    gpu_info = "CPU"
-    
-    # Check CUDA availability
-    if torch.cuda.is_available():
-        gpu_available = True
-        gpu_info = f"CUDA GPU: {torch.cuda.get_device_name(0)}"
-    
-    return gpu_available, gpu_info
-
-
 def initialize_face_mesh():
     """
-    Initialize MediaPipe Face Mesh with GPU acceleration if available.
-    
-    MediaPipe automatically uses GPU delegates when available:
-    - On systems with CUDA: Uses TensorFlow Lite GPU delegate
-    - On RunPod: Automatically detects and uses available GPU
+    Initialize MediaPipe Face Mesh.
     """
-    gpu_available, gpu_info = check_gpu_availability()
-    print(f"Initializing MediaPipe Face Mesh with: {gpu_info}")
-    
     mp_face_mesh = mp.solutions.face_mesh
     
-    # MediaPipe will automatically use GPU if available
-    # The model_selection parameter doesn't affect GPU usage
-    # GPU delegation happens automatically via TFLite
     face_mesh = mp_face_mesh.FaceMesh(
         static_image_mode=False,
         max_num_faces=1,
@@ -492,11 +469,7 @@ def process_video_segments(
     use_multiprocessing: bool = False
 ) -> Dict:
     """
-    Process video segments and extract visual information using GPU acceleration.
-    
-    GPU Optimization:
-    - MediaPipe Face Mesh automatically uses GPU if available (TFLite GPU delegate)
-    - Can use multiprocessing to parallelize frame processing across CPUs
+    Process video segments and extract visual information.
     
     Args:
         text_transcript: Dictionary with video metadata and segments
@@ -510,10 +483,6 @@ def process_video_segments(
     
     # Start timing
     start_time = time.time()
-    
-    # Check GPU availability and log
-    gpu_available, gpu_info = check_gpu_availability()
-    print(f"🚀 Processing with: {gpu_info}")
     
     # Initialize video capture to get properties
     video_fps = text_transcript['video_metadata']['fps']
@@ -529,10 +498,13 @@ def process_video_segments(
     if use_multiprocessing:
         print(f"⚡ Processing mode: Multiprocessing ({num_workers} workers)")
     else:
-        print(f"⚡ Processing mode: Sequential (GPU-accelerated)")
+        print(f"⚡ Processing mode: Sequential")
     
     processed_segments = []
     total_frames = 0
+    
+    # Start frame processing timer
+    frame_processing_start = time.time()
     
     # Process each segment
     for segment in tqdm(text_transcript['segments'], desc="Processing segments"):
@@ -546,7 +518,7 @@ def process_video_segments(
         frames = sample_frames(video_path, segment['start'], segment['end'], frame_interval, video_fps)
         total_frames += len(frames)
         
-        if use_multiprocessing and len(frames) > num_workers:
+        if use_multiprocessing:
             # Split frames into exactly num_workers batches for parallel processing
             # This ensures even distribution across all workers
             frames_per_worker = len(frames) // num_workers
@@ -559,7 +531,8 @@ def process_video_segments(
                 # Distribute remainder frames to first workers (e.g., 10 frames, 3 workers = 4,3,3)
                 batch_size = frames_per_worker + (1 if worker_id < remainder else 0)
                 batch = frames[start_idx:start_idx + batch_size]
-                frame_batches.append((worker_id, batch, frame_width, frame_height, video_fps))
+                if batch:  # Only add non-empty batches
+                    frame_batches.append((worker_id, batch, frame_width, frame_height, video_fps))
                 start_idx += batch_size
             
             print(f"📦 Created {len(frame_batches)} batches for {num_workers} workers")
@@ -590,6 +563,10 @@ def process_video_segments(
         processed_segment['visual_info'] = visual_info
         processed_segments.append(processed_segment)
     
+    # End frame processing timer
+    frame_processing_end = time.time()
+    frame_processing_time = frame_processing_end - frame_processing_start
+    
     final_dict =  {
         'segments': processed_segments,
         'metadata': {
@@ -611,9 +588,11 @@ def process_video_segments(
     elapsed_time = end_time - start_time
     
     print(f"\n✅ Processed {total_frames} frames across {len(processed_segments)} segments")
-    print(f"⏱️  Total processing time: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
+    print(f"⏱️  Frame processing time: {frame_processing_time:.2f} seconds ({frame_processing_time/60:.2f} minutes)")
+    print(f"⏱️  Total time (including overhead): {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
     if total_frames > 0:
-        print(f"📊 Average time per frame: {(elapsed_time/total_frames)*1000:.1f} ms")
+        print(f"📊 Average time per frame: {(frame_processing_time/total_frames)*1000:.1f} ms")
+        print(f"🚀 Processing speed: {total_frames/frame_processing_time:.1f} frames/sec")
     
     return final_dict
 
@@ -629,7 +608,7 @@ if __name__ == "__main__":
         text_transcript, 
         video_path,
         frame_interval=30,
-        use_multiprocessing=True  # Enable multiprocessing (auto-detects all CPUs)
+        use_multiprocessing=False  # Enable multiprocessing (auto-detects all CPUs)
     )
     
     output_json = "enriched_transcript.json"
