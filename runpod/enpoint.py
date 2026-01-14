@@ -5,7 +5,7 @@ Usage:
     # Option 1: Run locally
     result = process_frames_local(text_transcript, video_path)
     
-    # Option 2: Run on RunPod (GPU cloud)
+    # Option 2: Run on RunPod (cloud)
     result = process_frames_remote(text_transcript, video_url)
 """
 
@@ -80,16 +80,18 @@ def convert_to_presigned_url(video_url: str, expiration: int = 7200) -> str:
 def process_frames_remote(
     text_transcript: dict, 
     video_url: str, 
-    frame_interval: int = 30
+    frame_interval: int = 30,
+    use_multiprocessing: bool = False
 ) -> dict:
     """
-    Process video frames on RUNPOD endpoint using MediaPipe with GPU acceleration.
-    Use this to offload heavy GPU processing to the cloud.
+    Process video frames on RUNPOD endpoint using MediaPipe.
+    Use this to offload heavy processing to the cloud.
     
     Args:
         text_transcript: Dict with video_metadata and segments
         video_url: S3 URL or public URL to video
         frame_interval: Process every Nth frame (default 30)
+        use_multiprocessing: Enable multiprocessing for parallel frame processing (auto-detects CPU count on RunPod)
     
     Returns:
         Dict with processed segments containing face features
@@ -111,7 +113,8 @@ def process_frames_remote(
         "input": {
             "video_url": video_url,
             "text_transcript": text_transcript,
-            "frame_interval": frame_interval
+            "frame_interval": frame_interval,
+            "use_multiprocessing": use_multiprocessing
         }
     }
     
