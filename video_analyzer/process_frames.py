@@ -429,7 +429,7 @@ def convert_numpy_in_dict(obj):
 def process_frames_worker(args):
     """
     Worker function for multiprocessing frame processing.
-    Each worker creates its own FaceMesh instance to avoid sharing issues.
+    Each worker creates its own FaceMesh instance to avoid sharing issues.#d
     
     Args:
         args: Tuple of (worker_id, frames_batch, frame_width, frame_height, video_fps)
