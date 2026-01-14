@@ -7,6 +7,15 @@ import torch
 from typing import Dict, List, Union, Tuple
 import os
 import time
+import multiprocessing
+from multiprocessing import Pool, cpu_count
+
+# Set spawn method for multiprocessing (required for CUDA/MediaPipe compatibility)
+try:
+    multiprocessing.set_start_method('spawn', force=True)
+except RuntimeError:
+    # Already set, ignore
+    pass
 
 
 # Constants for feature calculations
@@ -386,7 +395,8 @@ def sample_frames(
     video_path: str, 
     start: float, 
     end: float, 
-    frame_interval: int = 30  # Sample every Nth frame
+    frame_interval: int = 30,  # Sample every Nth frame
+    video_fps: int = 30
 ) -> List[Tuple[float, np.ndarray]]:
     """
     Sample frames from video between start and end times.
@@ -401,7 +411,6 @@ def sample_frames(
         List of tuples (timestamp, frame)
     """
     cap = cv2.VideoCapture(video_path)
-    video_fps = cap.get(cv2.CAP_PROP_FPS)
     frames = []
     
     # Calculate start and end frame numbers
@@ -441,23 +450,59 @@ def convert_numpy_in_dict(obj):
         return obj
 
 
+def process_frames_worker(args):
+    """
+    Worker function for multiprocessing frame processing.
+    Each worker creates its own FaceMesh instance to avoid sharing issues.
+    
+    Args:
+        args: Tuple of (worker_id, frames_batch, frame_width, frame_height, video_fps)
+        
+    Returns:
+        List of processed frame results
+    """
+    worker_id, frames_batch, frame_width, frame_height, video_fps = args
+    
+    # Each worker initializes its own FaceMesh instance
+    with mp.solutions.face_mesh.FaceMesh(
+        static_image_mode=False,
+        max_num_faces=1,
+        min_detection_confidence=0.5,
+        refine_landmarks=True
+    ) as face_mesh:
+        metrics = FaceMetrics(frame_width, frame_height, video_fps)
+        results = []
+        
+        for frame_time, frame in frames_batch:
+            face_features = extract_face_features(frame, face_mesh, metrics)
+            frame_info = {
+                "frame_time": float(frame_time),
+                "face_features": face_features
+            }
+            results.append(frame_info)
+        
+        print(f"Worker {worker_id}: Processed {len(frames_batch)} frames")
+        return results
+
+
 def process_video_segments(
     text_transcript: dict, 
     video_path: str, 
-    frame_interval: int = 30
+    frame_interval: int = 30,
+    use_multiprocessing: bool = False
 ) -> Dict:
     """
     Process video segments and extract visual information using GPU acceleration.
     
     GPU Optimization:
     - MediaPipe Face Mesh automatically uses GPU if available (TFLite GPU delegate)
-    - Sequential processing leverages GPU efficiently
-    - On RunPod: CUDA GPU processes frames at ~15ms each
+    - Can use multiprocessing to parallelize frame processing across CPUs
     
     Args:
         text_transcript: Dictionary with video metadata and segments
         video_path: Path to video file
         frame_interval: Sample every Nth frame (higher = faster but less detail)
+        use_multiprocessing: Enable multiprocessing for parallel frame processing (auto-detects CPU count)
         
     Returns:
         Updated dictionary with visual information for each segment
@@ -475,13 +520,16 @@ def process_video_segments(
     frame_width = text_transcript['video_metadata']['frame_width']
     frame_height = text_transcript['video_metadata']['frame_height']
     
+    # Auto-detect number of workers from CPU count
+    num_workers = cpu_count() if use_multiprocessing else 1
+    
     print(f"📹 Video: {frame_width}x{frame_height} @ {video_fps} FPS")
     print(f"⚙️  Frame interval: every {frame_interval} frames")
-    print(f"⚡ Processing mode: Sequential (GPU-accelerated)")
     
-    # Initialize face mesh ONCE for all frames (reused across frames)
-    face_mesh = initialize_face_mesh()
-    metrics = FaceMetrics(frame_width, frame_height, video_fps)
+    if use_multiprocessing:
+        print(f"⚡ Processing mode: Multiprocessing ({num_workers} workers)")
+    else:
+        print(f"⚡ Processing mode: Sequential (GPU-accelerated)")
     
     processed_segments = []
     total_frames = 0
@@ -494,21 +542,50 @@ def process_video_segments(
             'text': segment['text'],
             'duration': float(segment['end'] - segment['start'])
         }
-        
         # Sample frames for this segment
-        frames = sample_frames(video_path, segment['start'], segment['end'], frame_interval)
+        frames = sample_frames(video_path, segment['start'], segment['end'], frame_interval, video_fps)
         total_frames += len(frames)
         
-        visual_info = []
-        
-        # Process frames sequentially
-        for frame_time, frame in frames:
-            face_features = extract_face_features(frame, face_mesh, metrics)
-            frame_info = {
-                "frame_time": float(frame_time),
-                "face_features": face_features
-            }
-            visual_info.append(frame_info)
+        if use_multiprocessing and len(frames) > num_workers:
+            # Split frames into exactly num_workers batches for parallel processing
+            # This ensures even distribution across all workers
+            frames_per_worker = len(frames) // num_workers
+            remainder = len(frames) % num_workers
+            
+            frame_batches = []
+            start_idx = 0
+            
+            for worker_id in range(num_workers):
+                # Distribute remainder frames to first workers (e.g., 10 frames, 3 workers = 4,3,3)
+                batch_size = frames_per_worker + (1 if worker_id < remainder else 0)
+                batch = frames[start_idx:start_idx + batch_size]
+                frame_batches.append((worker_id, batch, frame_width, frame_height, video_fps))
+                start_idx += batch_size
+            
+            print(f"📦 Created {len(frame_batches)} batches for {num_workers} workers")
+            print(f"   Batch sizes: {[len(b[1]) for b in frame_batches]}")
+            
+            # Process batches in parallel
+            with Pool(processes=num_workers) as pool:
+                results = pool.map(process_frames_worker, frame_batches)
+            
+            # Flatten results (already in correct order)
+            visual_info = []
+            for batch_results in results:
+                visual_info.extend(batch_results)
+        else:
+            # Sequential processing
+            face_mesh = initialize_face_mesh()
+            metrics = FaceMetrics(frame_width, frame_height, video_fps)
+            
+            visual_info = []
+            for frame_time, frame in frames:
+                face_features = extract_face_features(frame, face_mesh, metrics)
+                frame_info = {
+                    "frame_time": float(frame_time),
+                    "face_features": face_features
+                }
+                visual_info.append(frame_info)
         
         processed_segment['visual_info'] = visual_info
         processed_segments.append(processed_segment)
@@ -518,6 +595,8 @@ def process_video_segments(
         'metadata': {
             'total_segments': len(processed_segments),
             'frame_interval': frame_interval,
+            'processing_mode': 'multiprocessing' if use_multiprocessing else 'sequential',
+            'num_workers': num_workers if use_multiprocessing else 1,
             'video_properties': {
                 'width': frame_width,
                 'height': frame_height,
@@ -540,12 +619,19 @@ def process_video_segments(
 
 if __name__ == "__main__":
     
-    input_json = r'C:\video_analysis\code\video_analysis_saas\media\uploads\videos\2025_09_08___21_50_08_video-1757357401352\text_transcript.json'
-    video_path = r"C:\video_analysis\code\video_analysis_saas\media\uploads\videos\2025_09_08___21_50_08_video-1757357401352\original.webm"
+    input_json = r'media\uploads\text_transcript.json'
+    video_path = r'media\uploads\original.webm'
     with open(input_json, 'r', encoding='utf-8') as f:
         text_transcript = json.load(f)
-    images_text_transcript = process_video_segments(text_transcript, video_path)
-    import json
+    
+    # Test with multiprocessing enabled (auto-detects CPU count)
+    images_text_transcript = process_video_segments(
+        text_transcript, 
+        video_path,
+        frame_interval=30,
+        use_multiprocessing=True  # Enable multiprocessing (auto-detects all CPUs)
+    )
+    
     output_json = "enriched_transcript.json"
 
     def convert(o):

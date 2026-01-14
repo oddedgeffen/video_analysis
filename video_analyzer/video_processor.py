@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 DEBUG = False
 USE_RUNPOD = getattr(settings, 'USE_RUNPOD', False)  # Control via Django settings
 
-def process_video_file(paths, video_id=None, use_runpod=None):
+def process_video_file(paths, video_id=None, use_runpod=None, use_multiprocessing=False):
     """
     Main function to process a video file
     
@@ -40,6 +40,7 @@ def process_video_file(paths, video_id=None, use_runpod=None):
         paths: Dict with 'original_video', 'audio_file', 'base_dir' paths
         video_id: Video ID for S3 key generation (required if using RunPod with S3)
         use_runpod: Override USE_RUNPOD setting (True=remote, False=local, None=use setting)
+        use_multiprocessing: Enable multiprocessing for frame processing (auto-detects CPU count)
     """
     # Determine processing mode
     if use_runpod is None:
@@ -68,7 +69,8 @@ def process_video_file(paths, video_id=None, use_runpod=None):
         images_text_transcript = process_frames_remote(
             text_transcript=text_transcript,
             video_url=paths['file_url'],
-            frame_interval=frame_interval
+            frame_interval=frame_interval,
+            use_multiprocessing=use_multiprocessing
         )
         logger.info("RunPod processing completed successfully")
     else:
@@ -77,7 +79,8 @@ def process_video_file(paths, video_id=None, use_runpod=None):
         images_text_transcript = process_video_segments(
             text_transcript, 
             paths['original_video'],
-            frame_interval=frame_interval
+            frame_interval=frame_interval,
+            use_multiprocessing=use_multiprocessing
         )
     
     save_debug_transcript(images_text_transcript, 'images_text_transcript', paths, dbg_local=DEBUG)
@@ -97,7 +100,7 @@ def process_video_file(paths, video_id=None, use_runpod=None):
 
 if __name__ == "__main__":
     from pathlib import Path
-    base_dir = Path(r'C:\video_analysis\code\video_analysis_saas\media\uploads\videos\2025_09_11___09_11_24_video-1757571071875')
+    base_dir = Path(r'C:\video_analysis\code\video_analysis_saas\media\uploads')
     paths = {
         'original_video': base_dir / 'original.webm',
         'audio_file': base_dir / 'audio.wav',
