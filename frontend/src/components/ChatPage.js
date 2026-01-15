@@ -134,7 +134,7 @@ const ChatPage = () => {
             Our AI is processing your <strong>facial expressions</strong>, <strong>voice patterns</strong>, and <strong>speech content</strong> to provide personalized feedback.
             <br />
             <br />
-            This typically takes 30-60 seconds.
+            This typically takes 60 seconds.
           </Typography>
           <Typography
             variant="body2"
