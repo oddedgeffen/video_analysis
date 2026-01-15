@@ -22,7 +22,7 @@ import cv2
 logger = logging.getLogger(__name__)
 
 # Video duration limit in seconds
-MAX_VIDEO_DURATION = 30
+MAX_VIDEO_DURATION = 33
 
 
 def check_video_duration(video_path: str) -> tuple[bool, float]:
@@ -221,7 +221,7 @@ def _process_video_async(paths: dict, video_id: str) -> None:
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
 
         # Write results file locally only (atomically to avoid partial reads)
-        tmp_results_path = paths['results_file'].with_suffix('.json.tmp')
+        tmp_results_path = paths['results_file'].with_suffix('.tmp')
         with open(tmp_results_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         os.replace(tmp_results_path, paths['results_file'])
