@@ -3,10 +3,11 @@
 Trial Link Management Script
 
 This script provides various commands to manage trial links:
-- Create new trial links
+- Create new trial links (single or bulk)
 - List existing trial links
 - Check trial link status
 - Deactivate trial links
+- Delete trial links (single, expired, unused, or all)
 - View usage statistics
 """
 
@@ -29,6 +30,33 @@ def create_trial_link(max_videos, days_valid=30):
         expires_at=timezone.now() + timedelta(days=days_valid)
     )
     return link
+
+def create_multiple_trial_links(max_videos, num_links, days_valid=30, render_only=False):
+    """Create multiple trial links at once"""
+    print(f"Creating {num_links} trial links with {max_videos} videos each...")
+    print()
+    
+    links = []
+    for i in range(num_links):
+        link = create_trial_link(max_videos, days_valid)
+        links.append(link)
+    
+    print(f"Successfully created {num_links} trial links!")
+    print(f"Each link allows {max_videos} videos and expires in {days_valid} days.")
+    print()
+    
+    if render_only:
+        print("Render URLs:")
+    else:
+        print("URLs:")
+    print("-" * 80)
+    
+    for link in links:
+        if not render_only:
+            print(f"Local:  http://localhost:3000/trial/{link.code}")
+            print(f"Render: https://video-analysis-saas.onrender.com/trial/{link.code}")
+        else:
+            print(f"https://video-analysis-saas.onrender.com/trial/{link.code}")
 
 def list_trial_links():
     """List all trial links with their status"""
@@ -190,7 +218,8 @@ def show_help():
     print("Usage: python manage_trial_links.py <command> [arguments]")
     print()
     print("Commands:")
-    print("  create <max_videos> [days_valid]  - Create a new trial link")
+    print("  create <max_videos> [days_valid] [-n NUM] [--render-only]")
+    print("                                    - Create trial link(s)")
     print("  list                              - List all trial links")
     print("  check <code>                      - Check status of a specific trial link")
     print("  deactivate <code>                 - Deactivate a trial link")
@@ -201,9 +230,15 @@ def show_help():
     print("  stats                             - Show usage statistics")
     print("  help                              - Show this help message")
     print()
+    print("Create Options:")
+    print("  -n, --number NUM                  - Create NUM trial links (default: 1)")
+    print("  --render-only                     - Show only Render URLs (no localhost)")
+    print()
     print("Examples:")
-    print("  python manage_trial_links.py create 10              # 10 videos, expires in 30 days")
-    print("  python manage_trial_links.py create 5 7             # 5 videos, expires in 7 days")
+    print("  python manage_trial_links.py create 10              # 1 link, 10 videos, 30 days")
+    print("  python manage_trial_links.py create 5 7             # 1 link, 5 videos, 7 days")
+    print("  python manage_trial_links.py create 8 -n 10         # 10 links, 8 videos each")
+    print("  python manage_trial_links.py create 8 -n 10 --render-only  # 10 links, Render URLs only")
     print("  python manage_trial_links.py list                   # List all trial links")
     print("  python manage_trial_links.py check abc123...        # Check specific link status")
     print("  python manage_trial_links.py deactivate abc123...   # Deactivate a link")
@@ -213,7 +248,7 @@ def show_help():
     print("  python manage_trial_links.py delete-all             # Delete ALL links")
     print("  python manage_trial_links.py stats                  # Show statistics")
     print()
-    print("Note: Created links will show both localhost and Render production URLs.")
+    print("Note: Created links will show both localhost and Render production URLs (unless --render-only).")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -225,28 +260,64 @@ if __name__ == "__main__":
     if command == "create":
         if len(sys.argv) < 3:
             print("Error: Please provide the number of videos")
-            print("Usage: python manage_trial_links.py create <max_videos> [days_valid]")
+            print("Usage: python manage_trial_links.py create <max_videos> [days_valid] [-n NUM] [--render-only]")
             sys.exit(1)
         
         try:
+            # Parse max_videos (required)
             max_videos = int(sys.argv[2])
-            days_valid = int(sys.argv[3]) if len(sys.argv) > 3 else 30
-            
             if max_videos <= 0:
                 print("Error: Number of videos must be positive")
                 sys.exit(1)
             
-            link = create_trial_link(max_videos, days_valid)
-            print(f"Created trial link:")
-            print(f"Code: {link.code}")
-            print(f"Max Videos: {link.max_videos}")
-            print(f"Expires: {link.expires_at}")
-            print(f"\nURLs:")
-            print(f"  Local:  http://localhost:3000/trial/{link.code}")
-            print(f"  Render: https://video-analysis-saas.onrender.com/trial/{link.code}")
+            # Parse remaining arguments
+            days_valid = 30
+            num_links = 1
+            render_only = False
             
-        except ValueError:
-            print("Error: Please provide valid numbers")
+            i = 3
+            while i < len(sys.argv):
+                arg = sys.argv[i]
+                
+                if arg in ['-n', '--number']:
+                    if i + 1 >= len(sys.argv):
+                        print("Error: -n/--number requires a value")
+                        sys.exit(1)
+                    num_links = int(sys.argv[i + 1])
+                    if num_links <= 0:
+                        print("Error: Number of links must be positive")
+                        sys.exit(1)
+                    i += 2
+                elif arg == '--render-only':
+                    render_only = True
+                    i += 1
+                else:
+                    # Assume it's days_valid if it's a number and we haven't set it yet
+                    if days_valid == 30:  # Still at default
+                        days_valid = int(arg)
+                        if days_valid <= 0:
+                            print("Error: Days valid must be positive")
+                            sys.exit(1)
+                    i += 1
+            
+            # Create links
+            if num_links == 1:
+                # Single link - show detailed output
+                link = create_trial_link(max_videos, days_valid)
+                print(f"Created trial link:")
+                print(f"Code: {link.code}")
+                print(f"Max Videos: {link.max_videos}")
+                print(f"Expires: {link.expires_at}")
+                print(f"\nURLs:")
+                if not render_only:
+                    print(f"  Local:  http://localhost:3000/trial/{link.code}")
+                print(f"  Render: https://video-analysis-saas.onrender.com/trial/{link.code}")
+            else:
+                # Multiple links - use batch output
+                create_multiple_trial_links(max_videos, num_links, days_valid, render_only)
+            
+        except ValueError as e:
+            print(f"Error: Please provide valid numbers - {e}")
             sys.exit(1)
     
     elif command == "list":
