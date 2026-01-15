@@ -63,7 +63,21 @@ function LandingPage() {
               lineHeight: 1.2
             }}
           >
-            This is video analysis landing page
+            Improve Your Presentations with AI
+          </Typography>
+
+          <Typography
+            variant="h5"
+            component="p"
+            sx={{
+              fontWeight: 400,
+              fontSize: { xs: '1rem', sm: '1.25rem' },
+              maxWidth: '600px',
+              color: 'text.secondary',
+              lineHeight: 1.6
+            }}
+          >
+            Record a short video and get instant feedback on your voice, facial expressions, and delivery
           </Typography>
 
           <Button
@@ -76,7 +90,7 @@ function LandingPage() {
               mt: 4
             }}
           >
-            Get Started
+            Record Your Video
           </Button>
         </Box>
       </Container>

@@ -17,8 +17,42 @@ from .models import ProcessedVideo
 import threading
 import boto3
 from .utils_clean import _delete_processing_folder, _delete_s3_assets_for_video
+import cv2
 
 logger = logging.getLogger(__name__)
+
+# Video duration limit in seconds
+MAX_VIDEO_DURATION = 33
+
+
+def check_video_duration(video_path: str) -> tuple[bool, float]:
+    """
+    Check if video duration is within the allowed limit.
+    
+    Args:
+        video_path: Path to the video file
+        
+    Returns:
+        Tuple of (is_valid, duration_in_seconds)
+    """
+    try:
+        cap = cv2.VideoCapture(str(video_path))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        cap.release()
+        
+        if fps > 0:
+            duration = frame_count / fps
+            is_valid = duration <= MAX_VIDEO_DURATION
+            return is_valid, duration
+        else:
+            logger.error(f"Could not determine FPS for video: {video_path}")
+            return False, 0
+            
+    except Exception as e:
+        logger.error(f"Error checking video duration: {e}")
+        return False, 0
+
 
 def get_video_directory_structure(video_id: str, ext: str = '.webm') -> dict:
     """
@@ -140,6 +174,25 @@ def process_video_from_s3(request):
         with open(paths['original_video'], 'wb') as f:
             s3_client.download_fileobj(bucket, s3_key, f)
 
+        # Validate video duration BEFORE processing
+        is_valid, duration = check_video_duration(paths['original_video'])
+        if not is_valid:
+            # Clean up
+            logger.warning(f"Video duration ({duration:.1f}s) exceeds limit ({MAX_VIDEO_DURATION}s)")
+            s3_client.delete_object(Bucket=bucket, Key=s3_key)
+            if paths['original_video'].exists():
+                paths['original_video'].unlink()
+            if paths['base_dir'].exists():
+                paths['base_dir'].rmdir()
+            
+            return Response({
+                'error': f'Video duration ({duration:.1f}s) exceeds the maximum allowed duration of {MAX_VIDEO_DURATION} seconds',
+                'duration': round(duration, 1),
+                'max_duration': MAX_VIDEO_DURATION
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"Video duration validated: {duration:.1f}s (limit: {MAX_VIDEO_DURATION}s)")
+
         threading.Thread(target=_process_video_async, args=(paths, video_id), daemon=True).start()
 
         return Response({
@@ -159,12 +212,16 @@ def _process_video_async(paths: dict, video_id: str) -> None:
     try:
         logger.info('Background processing started')
         results = process_video_file(paths, video_id=video_id)
-
+        ##############
+        # import json
+        # with open('debug_data/final_transcript.json', 'r') as f:  # Note: 'r' not 'rb'
+        #     results = json.load(f)
+        ##############
         # Ensure base directory exists
         paths['base_dir'].mkdir(parents=True, exist_ok=True)
 
         # Write results file locally only (atomically to avoid partial reads)
-        tmp_results_path = paths['results_file'].with_suffix('.json.tmp')
+        tmp_results_path = paths['results_file'].with_suffix('.tmp')
         with open(tmp_results_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
         os.replace(tmp_results_path, paths['results_file'])
@@ -284,6 +341,26 @@ def upload_and_process_video(request):
                 for chunk in video_file.chunks():
                     dst.write(chunk)
             logger.info(f"Saved video locally at {paths['original_video']}")
+        
+        # Validate video duration BEFORE processing
+        is_valid, duration = check_video_duration(paths['original_video'])
+        if not is_valid:
+            # Clean up the uploaded video
+            logger.warning(f"Video duration ({duration:.1f}s) exceeds limit ({MAX_VIDEO_DURATION}s)")
+            if getattr(settings, 'USE_S3', False) and storage_key:
+                default_storage.delete(storage_key)
+            if paths['original_video'].exists():
+                paths['original_video'].unlink()
+            if paths['base_dir'].exists():
+                paths['base_dir'].rmdir()
+            
+            return Response({
+                'error': f'Video duration ({duration:.1f}s) exceeds the maximum allowed duration of {MAX_VIDEO_DURATION} seconds',
+                'duration': round(duration, 1),
+                'max_duration': MAX_VIDEO_DURATION
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"Video duration validated: {duration:.1f}s (limit: {MAX_VIDEO_DURATION}s)")
         
         # Kick off background processing so the request returns immediately
         threading.Thread(target=_process_video_async, args=(paths, filename_no_ext), daemon=True).start()

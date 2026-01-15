@@ -5,7 +5,7 @@ Usage:
     # Option 1: Run locally
     result = process_frames_local(text_transcript, video_path)
     
-    # Option 2: Run on RunPod (GPU cloud)
+    # Option 2: Run on RunPod (cloud)
     result = process_frames_remote(text_transcript, video_url)
 """
 
@@ -77,15 +77,21 @@ def convert_to_presigned_url(video_url: str, expiration: int = 7200) -> str:
     return presigned_url
 
 
-def process_frames_remote(text_transcript: dict, video_url: str, frame_interval: int = 30) -> dict:
+def process_frames_remote(
+    text_transcript: dict, 
+    video_url: str, 
+    frame_interval: int = 30,
+    use_multiprocessing: bool = False
+) -> dict:
     """
     Process video frames on RUNPOD endpoint using MediaPipe.
-    Use this to offload heavy GPU processing to the cloud.
+    Use this to offload heavy processing to the cloud.
     
     Args:
         text_transcript: Dict with video_metadata and segments
         video_url: S3 URL or public URL to video
         frame_interval: Process every Nth frame (default 30)
+        use_multiprocessing: Enable multiprocessing for parallel frame processing (auto-detects CPU count on RunPod)
     
     Returns:
         Dict with processed segments containing face features
@@ -107,7 +113,8 @@ def process_frames_remote(text_transcript: dict, video_url: str, frame_interval:
         "input": {
             "video_url": video_url,
             "text_transcript": text_transcript,
-            "frame_interval": frame_interval
+            "frame_interval": frame_interval,
+            "use_multiprocessing": use_multiprocessing
         }
     }
     
@@ -166,7 +173,8 @@ if __name__ == "__main__":
     VIDEO_URL = "https://video-analysis-bk.s3.eu-central-1.amazonaws.com/media/uploads/videos/2026_01_04___23_51_57_video-1767563505594/original.webm"
     
     print("Processing video on RunPod...")
-    result = process_frames_remote(sample_transcript, VIDEO_URL)
+    # Use frame_interval=60 for 2x speed (sample every 2 seconds instead of 1)
+    result = process_frames_remote(sample_transcript, VIDEO_URL, frame_interval=60)
     
     print("\n[SUCCESS] Done!")
     print(f"Processed {len(result.get('segments', []))} segments")
