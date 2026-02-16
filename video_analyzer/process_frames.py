@@ -558,10 +558,22 @@ def process_video_segments(
                     "face_features": face_features
                 }
                 visual_info.append(frame_info)
+            
+            
+            
         
         processed_segment['visual_info'] = visual_info
         processed_segments.append(processed_segment)
     
+    # Free MediaPipe resources to reclaim RAM before next processing step
+    import psutil, os, gc
+    mb_before = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    face_mesh.close()
+    del face_mesh
+    gc.collect()
+    mb_after = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    print(f"MediaPipe freed: {mb_before:.0f} MB -> {mb_after:.0f} MB (freed {mb_before - mb_after:.0f} MB)")
+
     # End frame processing timer
     frame_processing_end = time.time()
     frame_processing_time = frame_processing_end - frame_processing_start

@@ -420,6 +420,15 @@ def extract_audio_features(audio_path: str, segments: List[Dict]) -> Dict:
         enriched_segment['audio_features'] = audio_features
         enriched_segments.append(enriched_segment)
     
+    # Free Silero VAD model to reclaim RAM before next processing step
+    import psutil, os, gc
+    mb_before = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    del analyzer.model
+    del analyzer
+    gc.collect()
+    mb_after = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    logger.info(f"Silero VAD freed: {mb_before:.0f} MB -> {mb_after:.0f} MB (freed {mb_before - mb_after:.0f} MB)")
+
     return {
         'segments': enriched_segments,
         'global_audio': {

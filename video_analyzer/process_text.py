@@ -101,7 +101,7 @@ def transcribe_audio(
         "base",
         device=device,          # Use detected device (GPU or CPU)
         compute_type=compute_type,
-        cpu_threads=4,         # Limit CPU threads
+        cpu_threads=1,         # Match single-CPU environment
         num_workers=1          # Reduce worker threads
     )
     
@@ -144,6 +144,14 @@ def transcribe_audio(
         results.append(segment_dict)
         full_text.append(segment.text.strip())
     
+    # Free Whisper model to reclaim RAM before next processing step
+    import psutil, gc
+    mb_before = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    del model
+    gc.collect()
+    mb_after = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+    logger.info(f"Whisper model freed: {mb_before:.0f} MB -> {mb_after:.0f} MB (freed {mb_before - mb_after:.0f} MB)")
+
     return results, " ".join(full_text)
 
 def get_video_info(video_path, dst_audio_path):
