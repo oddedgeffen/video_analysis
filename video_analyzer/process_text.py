@@ -101,7 +101,7 @@ def transcribe_audio(
         "base",
         device=device,          # Use detected device (GPU or CPU)
         compute_type=compute_type,
-        cpu_threads=4,         # Limit CPU threads
+        cpu_threads=1,         # Match single-CPU environment
         num_workers=1          # Reduce worker threads
     )
     
