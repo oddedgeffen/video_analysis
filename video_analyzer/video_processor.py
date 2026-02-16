@@ -156,7 +156,7 @@ def _read_result(path, step_name):
 
 def process_video_file(paths, video_id=None, use_runpod=None, use_multiprocessing=False):
     """
-    Main function to process a video file.
+    Main function to process a video file. a
     Each ML step runs in a separate subprocess so memory is fully reclaimed
     between steps (C++ backends don't release memory via Python's gc).
     """
